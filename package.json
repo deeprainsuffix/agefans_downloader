@@ -1,0 +1,26 @@
+{
+  "name": "age_animation_cache",
+  "version": "1.0.0",
+  "description": "缓存age动漫线下观看",
+  "main": "index.js",
+  "type": "module",
+  "scripts": {
+    "build": "tsc",
+    "start": "node index.js"
+  },
+  "keywords": [
+    "puppeteer",
+    "node16"
+  ],
+  "author": "todo",
+  "license": "ISC",
+  "devDependencies": {
+    "@types/progress-stream": "^2.0.5",
+    "typescript": "^5.5.4"
+  },
+  "dependencies": {
+    "node-fetch": "^3.3.2",
+    "progress-stream": "^2.0.0",
+    "puppeteer": "^22.13.1"
+  }
+}
