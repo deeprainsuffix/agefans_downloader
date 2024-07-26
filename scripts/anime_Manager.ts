@@ -352,7 +352,7 @@ export class Manager_M3U8 extends ManagerBase implements I_Manager_M3U8 {
                 }
                 fileWriteStream.end();
                 fileWriteStream.on('error', (err) => {
-                    rj('step_dealPool出错，写入流错误: ' + err);
+                    rj('写入文件出错: ' + err);
                 });
                 fileWriteStream.on('finish', () => {
                     this.logInfo('下载完成', '这是同步在写'); // todo
@@ -426,14 +426,15 @@ export class Manager_AGEAnime extends ManagerBase implements I_Manager_AGEAnime 
         const urls_source = this.urls_source;
         try {
             for (let taskId = 0; taskId < urls_source.length; taskId++) {
+                const epi = formatEpi(taskId + 1, urls_source.length);
                 if (urls_source[taskId].type === Type_MP4) {
                     this.pool[taskId] = {
                         success: false,
                         isManager: false,
-                        runner: new Downloader_MP4(urls_source[taskId].url_source, taskId),
+                        runner: new Downloader_MP4(urls_source[taskId].url_source, taskId, epi), // taskId需要吗？ todo
                     };
                 } else {
-                    const runner = new Manager_M3U8(urls_source[taskId].url_source, formatEpi(taskId + 1, urls_source.length));
+                    const runner = new Manager_M3U8(urls_source[taskId].url_source, epi);
                     this.pool[taskId] = {
                         success: false,
                         isManager: true,
