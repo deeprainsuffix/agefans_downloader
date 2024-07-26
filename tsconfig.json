@@ -2,7 +2,11 @@
   "files": [
     "index.ts",
     "scripts/config.ts",
-    "scripts/downloadComposition.ts"
+    "scripts/util.ts",
+    "scripts/anime_Manager.ts",
+    "scripts/anime_Downloader.ts",
+
+    "scripts/overrideXHROpen.ts",
   ],
   "compilerOptions": {
     /* Visit https://aka.ms/tsconfig to read more about this file */

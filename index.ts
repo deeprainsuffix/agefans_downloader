@@ -50,11 +50,8 @@
 // }
 
 import { existsSync, rmSync, mkdirSync } from 'fs';
-import path from 'path';
-import { DownloadMp4 } from './scripts/downloadMp4.js';
-import { Manager_M3U8, DownloadM3U8 } from './scripts/downloadComposition.js';
-
-const download_dir = path.resolve('download');
+import { Manager_AGEAnime } from './scripts/anime_Manager.js';
+import { download_dir } from './scripts/config.js';
 
 function beforeRun() {
     if (existsSync(download_dir)) {
@@ -81,11 +78,21 @@ async function run() {
         'https://gimg0.baidu.com/gimg/app=2001&n=0&g=0n&src=https%3A%2F%2Fbaidu-rmb-videopic-1.bj.bcebos.com/hk/2203/16487188218173645b9ee8e504af59377f7cb70319ce40457896.jpg',
     ];
 
-    const url_m3u8 = 'https://43.240.156.118:8443/playurl/fa44c2c2f3074e0c105ca021ca3f960e.m3u8?ckey=9BB8DA7E0DA4ECAB147FE5A672907295CA2656946E4BBEFACE6C945D3350A64E4EDD0CB0C7EE78AA804714F2A6925C6047E8D17895536EFE780F6E7CB5A689F3B14594D0934D3038CFF345B65F8D55C98D9034937BD7BA1B91EDAC24AE60C69D0FCA5CFB4F725147A9BAC725646CE9F03FF71D6E8142EEB297923EADC7A5CA15480DC5E9E92F38DEC3077DA378E8A31501B28BE7373DCB87FAF49A77EDA7F5613BEE15BF647017150327EDB4A4577D8AAAF7A101A34BF88A3067E2BF8262AFD62D938D14A41C5113D41D2A8008ACE42D81E752EBE7EAB6C3A7987885085AE07B225E9817F9C0EE52D8741798A5E99E4C&time=1721829448&client_netip=111.30.245.145&media_type=jpg';
+    const url_m3u8 = 'https://43.240.156.118:8443/playurl/c457f0ccade82fdc7543976cf8a92153.m3u8?ckey=6332DDDFC51BC1D38287C185D27DD370D87C2FEA4865393E3E21340F156400B746491C9C17CC0773AF8CE92CDE1C51E0D1756AEA82099E986B427F2C5FA27B70863752344985ED0F89E476CB542528794B4E5B659AE695EE8D3485EE4406CAD94501451B3C5514BD18247AD8DB0C221E670364AB2C322B223B07D132F612AE9D6F6A26179FB3F2F10727F9B25DBF99D4AA149D252268C57D7F1ABD0BACC1206D731F597F9FB26B6936E5422F952171722DF7F2B33A5DC2668BA5EEBFE246EB6408A859B34C8B40D956A867A74F208814C2A355D9B7576863F49FCB45C283EF7C88448854799DD04CF0D5A9CA1E074161&time=1721919397&client_netip=111.30.245.145&media_type=jpg';
 
-    const manaM3 = new Manager_M3U8(url_m3u8, '02');
-    await manaM3.init();
-    await manaM3.run();
+    // const manaM3 = new Manager_M3U8(url_m3u8, '02');
+    // await manaM3.init();
+    // await manaM3.run();
+
+    // todo 下载前判断wifi还是流量，应该是在puppeteer启动前
+    // todo node-fetch和原生fetch，原生fetch要大于node >= 18 稳定要更靠后
+
+
+    const manager_AGEAnime = new Manager_AGEAnime([{ type: 'm3u8', url_source: url_m3u8 }]);
+    await manager_AGEAnime.init_pool();
+    await manager_AGEAnime.run();
+
+
 }
 
 run();
