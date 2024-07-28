@@ -5,7 +5,7 @@
     "scripts/util.ts",
     "scripts/anime_Manager.ts",
     "scripts/anime_Downloader.ts",
-
+    
     "scripts/overrideXHROpen.ts",
   ],
   "compilerOptions": {

@@ -1,26 +1,13 @@
-import { download_dir, Type_M3U8, Type_MP4 } from './config.js'
+import { download_dir, progressInterval, Type_M3U8, Type_MP4 } from './config.js'
 import { createWriteStream } from 'fs';
-import { formatEpi } from './util.js'
-import { type DownloaderBase, Downloader_M3U8, Downloader_MP4 } from './anime_Downloader.js';
+import { fetch, formatEpi } from './util.js'
+import { Downloader_M3U8_ts, Downloader_MP4 } from './anime_Downloader.js';
 
-type T_poolItem_Manager = {
-    success: boolean; // 没用，实际上，Manager控制逻辑保证了处理所有success为false的情况 todo
-    isManager: true;
-    runner: ManagerBase; // 具体运行的下载器实例或Manger实例
-};
-type T_poolItem_Downloader = {
-    success: boolean;
-    isManager: false;
-    runner: DownloaderBase;
-};
-
-type T_poolItem = T_poolItem_Manager | T_poolItem_Downloader;
-
-interface I_ManagerBase {
+interface I_ManagerBase<T_poolItem> {
     pool: T_poolItem[];
     poolSize: number;
     concurrentLen: number;
-    pool_concurrent: (Promise<void> | null)[];
+    pool_concurrent: Array<(() => Promise<any>) | null>;
 
     taskId_run_next: number;
     threshold_run: number;
@@ -29,7 +16,6 @@ interface I_ManagerBase {
     stopTask_run: boolean;
 
     errorSet: Set<number>;
-    errorSet_manager: Set<number>;
     tempErrorSet2Arr: number[];
     taskIdIndex_retry_next: number;
     retryRound: number;
@@ -37,13 +23,13 @@ interface I_ManagerBase {
     failCount_retry: number;
     lastFailedTaskId_retry: number;
     stopTask_retry: boolean;
-    result_manager: boolean;
+    result: boolean;
 }
 
-abstract class ManagerBase implements I_ManagerBase {
+abstract class ManagerBase<T_poolItem> implements I_ManagerBase<T_poolItem> {
     pool: T_poolItem[];
     poolSize: number;
-    pool_concurrent: (Promise<void> | null)[];
+    pool_concurrent: Array<(() => Promise<any>) | null>;
     concurrentLen: number;
 
     taskId_run_next: number;
@@ -53,7 +39,6 @@ abstract class ManagerBase implements I_ManagerBase {
     stopTask_run: boolean;
 
     errorSet: Set<number>;
-    errorSet_manager: Set<number>;
     tempErrorSet2Arr: number[];
     taskIdIndex_retry_next: number;
     retryRound: number;
@@ -61,7 +46,7 @@ abstract class ManagerBase implements I_ManagerBase {
     failCount_retry: number;
     lastFailedTaskId_retry: number;
     stopTask_retry: boolean;
-    result_manager: boolean;
+    result: boolean;
 
     constructor() {
         this.pool = [];
@@ -76,7 +61,6 @@ abstract class ManagerBase implements I_ManagerBase {
         this.stopTask_run = false;
 
         this.errorSet = new Set();
-        this.errorSet_manager = new Set();
         this.tempErrorSet2Arr = [...this.errorSet];
         this.taskIdIndex_retry_next = 0;
         this.retryRound = 0;
@@ -84,157 +68,23 @@ abstract class ManagerBase implements I_ManagerBase {
         this.failCount_retry = 0;
         this.lastFailedTaskId_retry = 0;
         this.stopTask_retry = false;
-        this.result_manager = false;
+        this.result = false;
 
         this.init_config();
     }
 
-    abstract vaildateUrl(url: string): boolean;
     abstract init_config(): void;
     abstract init_pool(): Promise<void>;
-    // abstract task_run(taskId: number): Promise<any>;
-    // abstract run(): Promise<void>;
-    // abstract task_retry(taskId: number): Promise<any>;
+    abstract task_run(taskId: number): () => Promise<any>;
+    abstract ifThreshold_task_run(taskId: number): void;
+    abstract run(): Promise<void>;
     abstract step_retry(): Promise<void>;
-    // abstract retry(): Promise<void>;
-    abstract step_dealPool(): Promise<void>;
-    abstract step_setResult_manager(): void;
+    abstract task_retry(taskId: number): () => Promise<any>;
+    abstract ifThreshold_task_retry(taskId: number): void;
+    abstract retry(): Promise<void>;
     // abstract releasePool: void;
     // abstract releasePool_concurrent: void;
-    abstract logError(...args: any[]): string;
-    abstract logInfo(...args: any[]): void;
-
-    async task_run(taskId: number): Promise<void> {
-        const poolItem = this.pool[taskId];
-        try {
-            await poolItem.runner.run();
-            if (poolItem.isManager) { // 判断逻辑 -1 isManager能去掉吗？
-                if (!poolItem.runner.result_manager) {
-                    throw '管理器' + taskId + '的result为false';
-                }
-            } else {
-                if (!poolItem.runner.result) {
-                    throw '片段' + taskId + '的result为null';
-                }
-            }
-
-            poolItem.success = true;
-
-            if (!this.stopTask_run && this.taskId_run_next < this.poolSize) {
-                return this.task_run(this.taskId_run_next++)
-            }
-        } catch (err) {
-            if (poolItem.isManager) { // 判断逻辑 -2 // errorSet_manager好像没用 todo
-                this.errorSet_manager.add(taskId);
-            } else {
-                this.errorSet.add(taskId);
-            }
-            this.logError('task_run error', err);
-
-            // 判断是否5个连续的taskId失败
-            if (taskId > this.lastFailedTaskId_run + 1) {
-                this.failCount_run = 0;
-            }
-            this.lastFailedTaskId_run = taskId;
-            this.failCount_run++;
-            if (this.failCount_run === this.threshold_run && taskId !== this.poolSize - 1) {
-                this.stopTask_run = true;
-            }
-        }
-    }
-
-    async run(): Promise<void> {
-        // run中最多并行concurrentLen个任务
-        // 如果有5个连续的taskId失败(除非这5个恰好是最后5个)，则不再继续task_run
-        try {
-            const sumTask_run = this.poolSize,
-                concurrentLen = this.concurrentLen,
-                pool_concurrent = this.pool_concurrent;
-
-            while (this.taskId_run_next < sumTask_run) {
-                if (this.stopTask_run) {
-                    throw '连续5次下载失败，最近一次: ts片段' + this.lastFailedTaskId_run;
-                }
-
-                let currConcurrentLen = Math.min(sumTask_run - this.taskId_run_next, concurrentLen);
-                for (let i = 0; i < currConcurrentLen; i++) {
-                    pool_concurrent[i] = this.task_run(this.taskId_run_next++);
-                }
-
-                await Promise.allSettled(pool_concurrent);
-                this.releasePool_concurrent();
-            }
-
-            await this.step_retry();
-            await this.step_dealPool();
-            this.step_setResult_manager();
-        } catch (err) {
-            throw this.logError('run失败', err);
-        }
-    }
-
-    async task_retry(taskId: number): Promise<void> {
-        try {
-            const poolItem = this.pool[taskId] as T_poolItem_Downloader; // run中逻辑保证
-            await poolItem.runner.run();
-            if (!poolItem.runner.result) {
-                throw '片段' + taskId + '的result为null';
-            }
-
-            poolItem.success = true;
-            this.errorSet.delete(taskId);
-
-            if (!this.stopTask_retry && this.taskIdIndex_retry_next < this.errorSet.size) {
-                return this.task_retry(this.tempErrorSet2Arr[this.taskIdIndex_retry_next++])
-            }
-        } catch (err) {
-            this.logError('task_retry error', err);
-
-            // 判断是否3个taskId失败
-            this.lastFailedTaskId_retry = taskId;
-            this.failCount_retry++;
-            if (this.failCount_retry === this.threshold_retry) {
-                this.stopTask_retry = true;
-            }
-        }
-    }
-
-    async retry(): Promise<void> {
-        // 和run一样，最多并行concurrentLen个任务
-        // 不一样的是：retry中最多进行retryRound轮，若每一轮中有任意3个失败，则不再继续task_retry
-        try {
-            const errorSet = this.errorSet,
-                concurrentLen = this.concurrentLen,
-                pool_concurrent = this.pool_concurrent,
-                retryRound = this.retryRound;
-
-            for (let currRetryRound = 0; currRetryRound < retryRound && errorSet.size; currRetryRound++) {
-                this.tempErrorSet2Arr = [...errorSet];
-                this.taskIdIndex_retry_next = 0;
-                this.failCount_retry = 0;
-                this.lastFailedTaskId_retry = 0;
-                const sumTask_retry = errorSet.size;
-                this.logInfo('第%s轮重新下载开始，共计%s个', currRetryRound + 1, sumTask_retry);
-                while (this.taskIdIndex_retry_next < sumTask_retry) {
-                    if (this.stopTask_retry) {
-                        throw '连续3次重新下载失败，最近一次: ts片段' + this.lastFailedTaskId_retry;
-                    }
-
-                    let currConcurrentLen = Math.min(sumTask_retry - this.taskIdIndex_retry_next, concurrentLen);
-                    for (let i = 0; i < currConcurrentLen; i++) {
-                        pool_concurrent[i] = this.task_retry(this.tempErrorSet2Arr[this.taskIdIndex_retry_next++]);
-                    }
-
-                    await Promise.allSettled(pool_concurrent);
-                    this.releasePool_concurrent();
-                }
-            }
-
-            this.tempErrorSet2Arr.length = 0;
-        } catch (err) {
-            throw this.logError('retry中出错', err);
-        }
-    }
+    abstract printInfo(...args: any[]): void;
 
     releasePool() {
         this.pool.length = 0;
@@ -246,32 +96,107 @@ abstract class ManagerBase implements I_ManagerBase {
 }
 
 
+interface I_progress_M3U8 {
+    epi: string;
+    tsCount_sum: number;
+    tsCount_began: number;
+    tsCount_success: number;
+    mute: boolean;
+    tipper: NodeJS.Timeout | null;
+}
+
+class Progress_M3U8 implements I_progress_M3U8 {
+    epi: string;
+    tsCount_sum: number;
+    tsCount_began: number;
+    tsCount_success: number;
+    mute: boolean;
+    tipper: NodeJS.Timeout | null;
+
+
+    constructor(epi: string) {
+        this.epi = epi;
+        this.tsCount_sum = 0;
+        this.tsCount_began = 0;
+        this.tsCount_success = 0;
+        this.mute = true;
+        this.tipper = null;
+    }
+
+    init(tsCount_sum: number) {
+        this.tsCount_sum = tsCount_sum;
+    }
+
+    printProgress() {
+        // const percentage_begon = Math.floor(this.tsCount_began / this.tsCount_sum * 100),
+        //     percentage_success = Math.floor(this.tsCount_success / this.tsCount_began * 100);
+        const percentage = Math.floor(this.tsCount_success / this.tsCount_sum * 100);
+        console.log(`第${this.epi}集 -> ` + `当前进度: ${percentage}%`);
+    }
+
+    addOne(success?: boolean) {
+        if (this.mute) {
+            return
+        }
+
+        this.tsCount_began++;
+        if (success) {
+            this.tsCount_success++;
+        }
+
+        if (this.tsCount_began === this.tsCount_sum) {
+            this.printProgress();
+            this.destroy();
+            return
+        }
+    }
+
+    fire() {
+        this.tipper = setInterval(() => {
+            this.printProgress();
+        }, progressInterval);
+        this.mute = false;
+    }
+
+    destroy() {
+        // @ts-ignore node类型推断好像有点问题，Stream、fetch也是
+        clearInterval(this.tipper);
+        this.mute = true;
+    }
+}
+
+type T_poolItem_Manager_M3U8 = {
+    taskId: number;
+    success: boolean;
+    runner: Downloader_M3U8_ts;
+};
+
 interface I_Manager_M3U8 {
     url_m3u8: string;
     epi: string;
+    progress_M3U8: Progress_M3U8;
 }
 
-export class Manager_M3U8 extends ManagerBase implements I_Manager_M3U8 {
-    pool: T_poolItem_Downloader[];
-
+export class Manager_M3U8 extends ManagerBase<T_poolItem_Manager_M3U8> implements I_Manager_M3U8 {
     url_m3u8: string;
     epi: string;
+    progress_M3U8: Progress_M3U8;
 
     constructor(url_m3u8: string, epi: string) {
         super();
 
         if (!this.vaildateUrl(url_m3u8)) {
-            throw 'm3u8地址不正确';
+            throw 'm3u8地址不是以“https://”开头';
         }
-        this.pool = [];
 
         this.url_m3u8 = url_m3u8;
         this.epi = epi;
+        this.progress_M3U8 = new Progress_M3U8(epi);
     }
 
     vaildateUrl(url_m3u8: string) {
-        // 检测url_m3u8是否正确 todo
-        if (!(url_m3u8.startsWith('http') || url_m3u8.startsWith('https'))) {
+        // 要伪装的话任意地址都可以
+        if (!url_m3u8.startsWith('https://')) {
             return false
         }
 
@@ -288,26 +213,29 @@ export class Manager_M3U8 extends ManagerBase implements I_Manager_M3U8 {
     }
 
     async init_pool() {
-        // 把contructor中逻辑的各个初始化逻辑加进来，可以考虑原型模式 todo
         try {
-            const urls_ts = await this.resolve_url_m3u8();
-            this.pool = urls_ts.map<T_poolItem_Downloader>((url_ts, taskId) => ({
+            const urls_ts = await this.resolve_url_m3u8(), size = urls_ts.length;
+            this.poolSize = size;
+            this.pool = urls_ts.map<T_poolItem_Manager_M3U8>((url_ts, taskId) => ({
+                taskId,
                 success: false,
-                isManager: false,
-                runner: new Downloader_M3U8(url_ts, taskId),
+                runner: new Downloader_M3U8_ts(url_ts),
             }));
-            this.poolSize = urls_ts.length;
-
+            this.progress_M3U8.init(size);
         } catch (err) {
-            throw this.logError('init_pool失败', err);
+            throw 'init_pool失败 -> ' + err;
         }
     }
 
     async resolve_url_m3u8() {
         try {
             const url_m3u8 = this.url_m3u8;
-            const res = await fetch(url_m3u8);
-            const fakeText = await res.text();
+            const { response, errMsg } = await fetch(url_m3u8);
+            if (!response) {
+                throw errMsg;
+            }
+
+            const fakeText = await response.text();
             const urls_ts = fakeText.split('\n').filter(s => s.startsWith('https'));
             if (!urls_ts.length) {
                 throw 'ts视频数量为0';
@@ -315,7 +243,73 @@ export class Manager_M3U8 extends ManagerBase implements I_Manager_M3U8 {
 
             return urls_ts
         } catch (err) {
-            throw this.logError('解析url_m3u8失败', err);
+            throw '解析url_m3u8失败 -> ' + err;
+        }
+    }
+
+    task_run(taskId: number) {
+        return async (): Promise<any> => {
+            try {
+                const poolItem = this.pool[taskId];
+                await poolItem.runner.run();
+                if (!poolItem.runner.result) {
+                    throw `片段${taskId}下载失败`;
+                }
+
+                poolItem.success = true;
+                this.progress_M3U8.addOne(true);
+
+                if (!this.stopTask_run && this.taskId_run_next < this.poolSize) {
+                    return this.task_run(this.taskId_run_next++)()
+                }
+            } catch (err) {
+                this.errorSet.add(taskId);
+                this.progress_M3U8.addOne(false);
+                this.ifThreshold_task_run(taskId);
+            }
+        }
+    }
+
+    ifThreshold_task_run(taskId: number) {
+        // 如果有threshold_run个连续的taskId失败(除非恰好是最后失败的threshold_run个)，则不再继续task_run
+        if (taskId > this.lastFailedTaskId_run + 1) {
+            this.failCount_run = 0;
+        }
+        this.lastFailedTaskId_run = taskId;
+        this.failCount_run++;
+        if (this.failCount_run === this.threshold_run && taskId !== this.poolSize - 1) {
+            this.stopTask_run = true;
+        }
+    }
+
+    async run(): Promise<void> {
+        // 最多并行concurrentLen个任务
+        try {
+            const sumTask_run = this.poolSize,
+                concurrentLen = this.concurrentLen,
+                pool_concurrent = this.pool_concurrent;
+            this.progress_M3U8.fire();
+
+            while (this.taskId_run_next < sumTask_run) {
+                if (this.stopTask_run) {
+                    throw `连续5次ts片段下载失败，最近一次: ts片段${this.lastFailedTaskId_run}`;
+                }
+
+                let currConcurrentLen = Math.min(sumTask_run - this.taskId_run_next, concurrentLen);
+                for (let i = 0; i < currConcurrentLen; i++) {
+                    pool_concurrent[i] = this.task_run(this.taskId_run_next++);
+                }
+
+                await Promise.allSettled(pool_concurrent.map(task => task && task()));
+                this.releasePool_concurrent();
+            }
+
+            await this.step_retry();
+            await this.step_dealPool();
+            this.step_setResult();
+        } catch (err) {
+            this.progress_M3U8.destroy();
+            throw 'run失败 -> ' + err;
         }
     }
 
@@ -325,16 +319,79 @@ export class Manager_M3U8 extends ManagerBase implements I_Manager_M3U8 {
                 return
             }
 
-            this.logInfo('有下载失败的ts片段，共计%s个，准备重新下载', this.errorSet.size); // 视频或片段，这个要定义一下 todo
+            this.printInfo(`下载失败，准备重新下载`);
             await this.retry();
 
             if (this.errorSet.size) {
-                throw this.logError(`仍然有下载失败的片段，共${this.errorSet.size}个`);
-            } else {
-                this.logInfo('所有下载失败的片段重新下载成功');
+                throw '重新下载失败';
             }
         } catch (err) {
-            throw this.logError('step_retry出错', err);
+            throw 'step_retry出错 -> ' + err;
+        }
+    }
+
+    task_retry(taskId: number) {
+        return async (): Promise<any> => {
+            try {
+                const poolItem = this.pool[taskId];
+                await poolItem.runner.run();
+                if (!poolItem.runner.result) {
+                    throw `片段${taskId}重新下载失败`;
+                }
+
+                poolItem.success = true;
+                this.errorSet.delete(taskId);
+
+                if (!this.stopTask_retry && this.taskIdIndex_retry_next < this.errorSet.size) {
+                    return this.task_retry(this.tempErrorSet2Arr[this.taskIdIndex_retry_next++])()
+                }
+            } catch (err) {
+                this.ifThreshold_task_retry(taskId);
+            }
+        }
+    }
+
+    ifThreshold_task_retry(taskId: number) {
+        // 在每一轮中，有任意threshold_retry个失败，则不再继续task_retry，failCount_retry在每轮开始前重置
+        this.lastFailedTaskId_retry = taskId;
+        this.failCount_retry++;
+        if (this.failCount_retry === this.threshold_retry) {
+            this.stopTask_retry = true;
+        }
+    }
+
+    async retry(): Promise<void> {
+        // 最多进行retryRound重试
+        // 最多并行concurrentLen个任务
+        try {
+            const errorSet = this.errorSet,
+                concurrentLen = this.concurrentLen,
+                pool_concurrent = this.pool_concurrent,
+                retryRound = this.retryRound;
+
+            for (let currRetryRound = 0; currRetryRound < retryRound && errorSet.size; currRetryRound++) {
+                this.tempErrorSet2Arr = [...errorSet];
+                this.taskIdIndex_retry_next = 0;
+                this.failCount_retry = 0;
+                const sumTask_retry = errorSet.size;
+                while (this.taskIdIndex_retry_next < sumTask_retry) {
+                    if (this.stopTask_retry) {
+                        throw `${this.threshold_retry}次重新下载失败，最近一次: ts片段${this.lastFailedTaskId_retry}`;
+                    }
+
+                    let currConcurrentLen = Math.min(sumTask_retry - this.taskIdIndex_retry_next, concurrentLen);
+                    for (let i = 0; i < currConcurrentLen; i++) {
+                        pool_concurrent[i] = this.task_retry(this.tempErrorSet2Arr[this.taskIdIndex_retry_next++]);
+                    }
+
+                    await Promise.allSettled(pool_concurrent.map(task => task && task()));
+                    this.releasePool_concurrent();
+                }
+            }
+
+            this.tempErrorSet2Arr.length = 0;
+        } catch (err) {
+            throw 'retry中出错 -> ' + err;
         }
     }
 
@@ -343,23 +400,22 @@ export class Manager_M3U8 extends ManagerBase implements I_Manager_M3U8 {
             try {
                 const fileName = download_dir + '/' + this.epi + '.ts';
                 const fileWriteStream = createWriteStream(fileName);
-                for (const { runner } of this.pool) {
-                    const buffer = runner.result;
-                    if (!buffer) {
-                        rj('step_dealPool出错，片段' + runner.taskId + 'buffer为空');
+                for (const { success, taskId, runner } of this.pool) {
+                    if (!success) {
+                        throw `片段'${taskId}下载失败`;
                     }
-                    fileWriteStream.write(buffer);
+                    fileWriteStream.write(runner.result);
                 }
                 fileWriteStream.end();
                 fileWriteStream.on('error', (err) => {
-                    rj('写入文件出错: ' + err);
+                    rj('step_dealPool出错 -> 写入文件出错' + err);
                 });
                 fileWriteStream.on('finish', () => {
-                    this.logInfo('下载完成', '这是同步在写'); // todo
+                    this.printInfo(`☆☆☆下载成功(第${this.epi}集)`);
                     re();
                 });
             } catch (err) {
-                rj('step_dealPool出错: ' + err);
+                rj('step_dealPool出错 -> ' + err);
             }
         })
             .finally(() => {
@@ -368,24 +424,32 @@ export class Manager_M3U8 extends ManagerBase implements I_Manager_M3U8 {
             })
     }
 
-    step_setResult_manager(): void {
-        if (!this.errorSet.size) {
-            this.result_manager = true;
-        }
+    step_setResult(): void {
+        this.result = true;
     }
 
-    // logErrorNoConsole todo
-    logError(...args: any[]) {
-        const msg = args.join(' -> ');
-        console.log('Error: 第%s集(Manager_M3U8) -> ', this.epi, msg);
-        return msg
-    }
-
-    logInfo(msg: string, ...args: any[]) {
-        console.log('第%s集 -> ' + msg, this.epi, ...args);
+    printInfo(info: string) {
+        console.log(`第${this.epi}集 -> ` + info);
     }
 }
 
+
+interface T_poolItem_Manager_AGEAnime_base {
+    taskId: number;
+    epi: string;
+    success: boolean;
+    isManager: boolean;
+    runner: Manager_M3U8 | Downloader_MP4 | null;
+}
+interface T_poolItem_Manager_AGEAnime_M3U8 extends T_poolItem_Manager_AGEAnime_base {
+    isManager: true;
+    runner: Manager_M3U8 | null;
+};
+interface T_poolItem_Manager_AGEAnime_MP4 extends T_poolItem_Manager_AGEAnime_base {
+    isManager: false;
+    runner: Downloader_MP4 | null;
+};
+type T_poolItem_Manager_AGEAnime = T_poolItem_Manager_AGEAnime_M3U8 | T_poolItem_Manager_AGEAnime_MP4;
 
 type T_urls_source = {
     type: typeof Type_MP4 | typeof Type_M3U8;
@@ -396,8 +460,9 @@ interface I_Manager_AGEAnime {
     urls_source: T_urls_source[];
 }
 
-export class Manager_AGEAnime extends ManagerBase implements I_Manager_AGEAnime {
+export class Manager_AGEAnime extends ManagerBase<T_poolItem_Manager_AGEAnime> implements I_Manager_AGEAnime {
     urls_source: T_urls_source[];
+
     constructor(urls_source: T_urls_source[]) {
         super();
 
@@ -406,11 +471,6 @@ export class Manager_AGEAnime extends ManagerBase implements I_Manager_AGEAnime 
         }
 
         this.urls_source = urls_source;
-    }
-
-    vaildateUrl(url_prefix: string) {
-        // 不需要 todo
-        return true
     }
 
     init_config(): void {
@@ -423,29 +483,105 @@ export class Manager_AGEAnime extends ManagerBase implements I_Manager_AGEAnime 
     }
 
     async init_pool(): Promise<void> {
-        const urls_source = this.urls_source;
+        const urls_source = this.urls_source, size = urls_source.length;
+        this.pool = new Array(size).fill(null).map((_, taskId) => ({
+            taskId,
+            epi: '0',
+            success: false,
+            isManager: false,
+            runner: null,
+        })); // 为了保证this.pool[taskId]不为空
+        this.poolSize = size;
         try {
-            for (let taskId = 0; taskId < urls_source.length; taskId++) {
-                const epi = formatEpi(taskId + 1, urls_source.length);
-                if (urls_source[taskId].type === Type_MP4) {
-                    this.pool[taskId] = {
-                        success: false,
-                        isManager: false,
-                        runner: new Downloader_MP4(urls_source[taskId].url_source, taskId, epi), // taskId需要吗？ todo
-                    };
-                } else {
-                    const runner = new Manager_M3U8(urls_source[taskId].url_source, epi);
-                    this.pool[taskId] = {
-                        success: false,
-                        isManager: true,
-                        runner,
-                    };
-                    await runner.init_pool();
+            for (let taskId = 0; taskId < size; taskId++) {
+                const epi = formatEpi(taskId + 1, size);
+                this.printInfo(`第${epi}集下载开始 ————————`);
+                this.pool[taskId].epi = epi;
+                try {
+                    // 这里怎么使用ts推断？
+                    if (urls_source[taskId].type === Type_MP4) {
+                        const runner = new Downloader_MP4(urls_source[taskId].url_source, epi);
+                        this.pool[taskId].runner = runner;
+                    } else {
+                        this.pool[taskId].isManager = true;
+                        const runner = new Manager_M3U8(urls_source[taskId].url_source, epi);
+                        await runner.init_pool();
+                        this.pool[taskId].runner = runner;
+                    }
+                } catch (err: any) {
+                    const which_runner = this.pool[taskId].runner ? 'Manager_M3U8' : 'Downloader_MP4';
+                    const errMsg = `下载失败(第${epi}集): 初始化失败: Error${which_runner} ${err}`;
+                    this.printError(errMsg);
                 }
             }
-            this.poolSize = urls_source.length;
         } catch (err) {
-            throw this.logError('init_pool失败', err);
+            throw this.printError('初始化失败 -> ' + err);
+        }
+    }
+
+    task_run(taskId: number) {
+        return async (): Promise<any> => {
+            const poolItem = this.pool[taskId];
+            try {
+                if (poolItem.runner) {
+                    await poolItem.runner.run();
+                    if (!poolItem.runner.result) {
+                        throw `无结果`;
+                    }
+
+                    poolItem.success = true;
+                }
+
+                if (!this.stopTask_run && this.taskId_run_next < this.poolSize) {
+                    return this.task_run(this.taskId_run_next++)()
+                }
+            } catch (err) {
+                this.printError(`下载失败(第${poolItem.epi}集): ` + err);
+                if (!poolItem.isManager) {
+                    this.errorSet.add(taskId);
+                }
+                this.ifThreshold_task_run(taskId);
+            }
+        }
+    }
+
+    ifThreshold_task_run(taskId: number): void {
+        // 如果有threshold_run个连续的taskId失败(除非恰好是最后失败的threshold_run个)，则不再继续task_run
+        if (taskId > this.lastFailedTaskId_run + 1) {
+            this.failCount_run = 0;
+        }
+        this.lastFailedTaskId_run = taskId;
+        this.failCount_run++;
+        if (this.failCount_run === this.threshold_run && taskId !== this.poolSize - 1) {
+            this.stopTask_run = true;
+        }
+    }
+
+    async run(): Promise<void> {
+        // 最多并行concurrentLen个任务
+        try {
+            const sumTask_run = this.poolSize,
+                concurrentLen = this.concurrentLen,
+                pool_concurrent = this.pool_concurrent;
+
+            while (this.taskId_run_next < sumTask_run) {
+                if (this.stopTask_run) {
+                    throw `连续${this.threshold_run}个视频下载失败，最近一次失败: 第${this.pool[this.lastFailedTaskId_run].epi}集`;
+                }
+
+                let currConcurrentLen = Math.min(sumTask_run - this.taskId_run_next, concurrentLen);
+                for (let i = 0; i < currConcurrentLen; i++) {
+                    pool_concurrent[i] = this.task_run(this.taskId_run_next++);
+                }
+
+
+                await Promise.allSettled(pool_concurrent.map(task => task && task()));
+                this.releasePool_concurrent();
+            }
+
+            await this.step_retry();
+        } catch (err) {
+            throw this.printError('run失败 -> ' + err);
         }
     }
 
@@ -455,36 +591,109 @@ export class Manager_AGEAnime extends ManagerBase implements I_Manager_AGEAnime 
                 return
             }
 
-            this.logInfo('有下载失败的mp4，共计%s个，准备重新下载', this.errorSet.size); // 视频或片段，这个要定义一下 todo
+            this.printInfo(`有下载失败的mp4，共计${this.errorSet.size}个，准备重新下载`);
             await this.retry();
 
             if (this.errorSet.size) {
-                throw this.logError(`仍然有下载失败的mp4，共${this.errorSet.size}个`);
-            } else {
-                this.logInfo('所有下载失败的mp4视频重新下载成功');
+                throw `仍然有下载失败的mp4，共${this.errorSet.size}个`;
             }
         } catch (err) {
-            throw this.logError('step_retry出错', err);
+            throw 'step_retry出错 -> ' + err;
         }
     }
 
-    async step_dealPool(): Promise<void> {
-        // nothing // todo
+    task_retry(taskId: number) {
+        return async (): Promise<any> => {
+            try {
+                interface Temp_PoolItem extends T_poolItem_Manager_AGEAnime_MP4 {
+                    runner: Downloader_MP4;
+                }
+                const poolItem = this.pool[taskId] as Temp_PoolItem; // run中逻辑保证
+                await poolItem.runner.run();
+                if (!poolItem.runner.result) {
+                    throw `重新下载失败`;
+                }
+
+                poolItem.success = true;
+                this.errorSet.delete(taskId);
+
+                if (!this.stopTask_retry && this.taskIdIndex_retry_next < this.errorSet.size) {
+                    return this.task_retry(this.tempErrorSet2Arr[this.taskIdIndex_retry_next++])()
+                }
+            } catch (err) {
+                this.ifThreshold_task_retry(taskId);
+            }
+        }
     }
 
-    step_setResult_manager(): void {
-        // nothing // todo
+    ifThreshold_task_retry(taskId: number): void {
+        // 在每一轮中，有任意threshold_retry个失败，则不再继续task_retry，failCount_retry在每轮开始前重置
+        this.lastFailedTaskId_retry = taskId;
+        this.failCount_retry++;
+        if (this.failCount_retry === this.threshold_retry) {
+            this.stopTask_retry = true;
+        }
     }
 
-    logError(...args: any[]): string {
-        // todo
-        const msg = args.join(' -> ');
-        console.log('Error(Manager_AGEAnime): ', msg);
-        return msg
+    async retry(): Promise<void> {
+        // 最多进行retryRound重试
+        // 最多并行concurrentLen个任务
+        try {
+            const errorSet = this.errorSet,
+                concurrentLen = this.concurrentLen,
+                pool_concurrent = this.pool_concurrent,
+                retryRound = this.retryRound;
+
+            for (let currRetryRound = 0; currRetryRound < retryRound && errorSet.size; currRetryRound++) {
+                this.tempErrorSet2Arr = [...errorSet];
+                this.taskIdIndex_retry_next = 0;
+                this.failCount_retry = 0;
+                const sumTask_retry = errorSet.size;
+                while (this.taskIdIndex_retry_next < sumTask_retry) {
+                    if (this.stopTask_retry) {
+                        throw `${this.threshold_retry}次重新下载失败，最近一次: 第${this.pool[this.lastFailedTaskId_retry].epi}集`;
+                    }
+
+                    let currConcurrentLen = Math.min(sumTask_retry - this.taskIdIndex_retry_next, concurrentLen);
+                    for (let i = 0; i < currConcurrentLen; i++) {
+                        pool_concurrent[i] = this.task_retry(this.tempErrorSet2Arr[this.taskIdIndex_retry_next++]);
+                    }
+
+                    await Promise.allSettled(pool_concurrent.map(task => task && task()));
+                    this.releasePool_concurrent();
+                }
+            }
+
+            this.tempErrorSet2Arr.length = 0;
+        } catch (err) {
+            throw 'retry中出错 -> ' + err;
+        }
     }
 
-    logInfo(msg: string, ...args: any[]) {
-        // todo
-        console.log(msg, ...args);
+    summary() {
+        const count_sum = this.poolSize;
+        let count_success = 0,
+            count_fail = 0;
+        this.pool.forEach(({ success, epi }) => {
+            if (success) {
+                count_success++;
+            } else {
+                count_fail++;
+            }
+        });
+
+        let msg = `期望下载${count_sum}个，成功${count_success}个, 失败${count_fail}个`;
+        this.printInfo(msg);
+
+        this.releasePool_concurrent();
+        this.releasePool();
+    }
+
+    printError(errMsg: string) {
+        console.log('\nError ———— ' + errMsg);
+    }
+
+    printInfo(info: string) {
+        console.log('\n' + info);
     }
 }

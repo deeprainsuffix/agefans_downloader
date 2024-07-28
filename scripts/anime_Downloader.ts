@@ -1,65 +1,63 @@
 import { createWriteStream } from 'fs';
 import { pipeline } from 'node:stream/promises';
 import progressStream from 'progress-stream';
-import { download_dir } from './config.js';
-import fetch, { type Response as NodeFetchResponse } from 'node-fetch'; // 没看懂原生fetch是怎么将response推断为ReadableStream<Uint8Array>的 todo
+import { download_dir, Min_content_length_MP4, Min_content_length_TS, progressInterval } from './config.js';
+import { fetch, type T_Response } from './util.js';
 
 type T_result = boolean | ArrayBuffer | null;
 
 interface I_DownloaderBase {
     url_source: string;
-    taskId: number;
     result: T_result;
 }
 
 export abstract class DownloaderBase implements I_DownloaderBase {
     url_source: string;
-    taskId: number;
     result: boolean | ArrayBuffer | null;
 
-    constructor(url_source: string, taskId: number) {
+    constructor(url_source: string) {
         if (!this.vaildateUrl(url_source)) {
-            throw '下载地址不是以http或https开头';
+            throw '下载地址不是以“https://”开头';
         }
 
         this.url_source = url_source;
-        this.taskId = taskId;
-
-        this.result = null;
-    }
-
-    abstract vaildateUrl(url: string): boolean;
-    abstract run(): Promise<void>;
-}
-
-export class Downloader_M3U8 extends DownloaderBase {
-    result: ArrayBuffer | null;
-
-    constructor(url_source: string, taskId: number) {
-        super(url_source, taskId);
-
         this.result = null;
     }
 
     vaildateUrl(url: string) {
-        if (!(url.startsWith('http') || url.startsWith('https'))) {
+        if (!url.startsWith('https://')) {
             return false
         }
 
         return true
     }
 
+    abstract run(): Promise<void>;
+}
+
+export class Downloader_M3U8_ts extends DownloaderBase {
+    result: ArrayBuffer | null;
+
+    constructor(url_source: string) {
+        super(url_source);
+
+        this.result = null;
+    }
+
     async run(): Promise<any> {
         try {
-            const response = await fetch(this.url_source, {
+            const { response, errMsg } = await fetch(this.url_source, {
                 headers: {
                     'Content-Type': 'application/octet-stream',
                 }
             });
+            if (!response) {
+                throw errMsg;
+            }
 
             const arrayBuffer = await response.arrayBuffer();
-            if (arrayBuffer.byteLength <= 0) {
-                throw '片段' + this.taskId + '无数据'
+            if (arrayBuffer.byteLength <= Min_content_length_TS) {
+                throw 'ts片段内容量过少'
             }
 
             this.result = this.fixedBuffer(arrayBuffer);
@@ -86,33 +84,29 @@ interface I_Downloader_MP4 {
 
 export class Downloader_MP4 extends DownloaderBase implements I_Downloader_MP4 {
     result: boolean | null;
+
     epi: string;
 
-    constructor(url_source: string, taskId: number, epi: string) {
-        super(url_source, taskId);
+    constructor(url_source: string, epi: string) {
+        super(url_source);
         this.result = null;
 
         this.epi = epi;
     }
 
-    vaildateUrl(url: string) {
-        if (!(url.startsWith('http') || url.startsWith('https'))) {
-            return false
-        }
-
-        return true
-    }
-
     async run(): Promise<void> {
         try {
-            const response = await fetch(this.url_source, {
+            const { response, errMsg } = await fetch(this.url_source, {
                 headers: {
                     'Content-Type': 'application/octet-stream',
                 }
             });
+            if (!response) {
+                throw errMsg;
+            }
 
-            if (!response.body) {
-                throw '无数据';
+            if (Number(response.headers.get('content-length')) < Min_content_length_MP4) {
+                throw 'mp4视频内容量过少';
             }
 
             await this.genFile(response);
@@ -122,29 +116,29 @@ export class Downloader_MP4 extends DownloaderBase implements I_Downloader_MP4 {
         }
     }
 
-    async genFile(response: NodeFetchResponse) {
+    async genFile(response: T_Response) {
         return new Promise((re, rj) => {
             try {
                 const total = response.headers.get("content-length");
                 const progress = progressStream({
                     length: total !== null ? +total : undefined,
-                    time: 5 * 1000,
+                    time: progressInterval,
                 });
                 progress.on('err', (err) => {
-                    rj('过程提示出错: ' + err);
+                    rj('过程提示出错 -> ' + err);
                 });
                 progress.on('progress', (progressData) => {
-                    let percentage = Math.round(progressData.percentage) + '%';
-                    this.logInfo('当前进度: %s', percentage);
+                    let percentage = Math.floor(progressData.percentage) + '%';
+                    this.printInfo(`当前进度: ${percentage}`);
                 });
 
                 const fileName = download_dir + '/' + this.epi + '.mp4';
                 const fileWriteStream = createWriteStream(fileName);
                 fileWriteStream.on('error', (err) => {
-                    rj('写入文件出错: ' + err);
+                    rj('写入文件出错 -> ' + err);
                 });
                 fileWriteStream.on('finish', () => {
-                    this.logInfo('下载完成', '这是同步在写'); // todo
+                    this.printInfo(`☆☆☆下载成功(第${this.epi}集)`);
                     re(true);
                 });
 
@@ -159,7 +153,7 @@ export class Downloader_MP4 extends DownloaderBase implements I_Downloader_MP4 {
         })
     }
 
-    logInfo(msg: string, ...args: any[]) {
-        console.log('第%s集 -> ' + msg, this.epi, ...args);
+    printInfo(info: string) {
+        console.log(`第${this.epi}集 -> ` + info);
     }
 }
