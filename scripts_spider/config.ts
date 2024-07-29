@@ -1,0 +1,1 @@
+export const episodeEleClassName = '.video_detail_episode';

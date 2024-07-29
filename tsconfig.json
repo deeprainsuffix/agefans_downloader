@@ -1,12 +1,16 @@
 {
   "files": [
     "index.ts",
-    "scripts/config.ts",
-    "scripts/util.ts",
-    "scripts/anime_Manager.ts",
-    "scripts/anime_Downloader.ts",
+    "meta.ts",
+
+    // "scripts_download/config.ts",
+    // "scripts_download/util.ts",
+    // "scripts_download/anime_Manager.ts",
+    // "scripts_download/anime_Downloader.ts",
     
-    "scripts/overrideXHROpen.ts",
+    "scripts_spider/overrideXHROpen.ts",
+    "scripts_spider/util.ts",
+    "scripts_spider/config.ts",
   ],
   "compilerOptions": {
     /* Visit https://aka.ms/tsconfig to read more about this file */
