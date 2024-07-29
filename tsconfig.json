@@ -8,7 +8,7 @@
     // "scripts_download/anime_Manager.ts",
     // "scripts_download/anime_Downloader.ts",
     
-    "scripts_spider/overrideXHROpen.ts",
+    "scripts_spider/runInBrowser.ts",
     "scripts_spider/util.ts",
     "scripts_spider/config.ts",
   ],
