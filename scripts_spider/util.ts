@@ -1,6 +1,6 @@
 import { type I_Meta } from '../meta.js'
 
-export function getEpisode(metaRange: I_Meta['range'], sum: number) {
+export function get_episode_wanted(metaRange: I_Meta['range'], sum: number) {
     const set = new Set<number>();
     if (sum === 0) {
         return [];

@@ -9,7 +9,7 @@ import { meta, type I_Meta } from './meta.js';
 import puppeteer from "puppeteer";
 import { runInChrome, getTipEleM3U8Url } from './scripts_spider/overrideXHROpen.js';
 import { episodeEleClassName } from './scripts_spider/config.js';
-import { getEpisode } from './scripts_spider/util.js';
+import { get_episode_wanted } from './scripts_spider/util.js';
 
 const iframeUrl = 'https://43.240.156.118:8443/vip/?url=age_2676p1orVCfnILSYZcwm02IkyCeV7usiIuPd1dnMyEEaowQ32hGUQWYA7BdOF%2BuMdV42f2tl5WKw9SjOprKwWihbm8IHsu8FedP8';
 
@@ -23,21 +23,27 @@ interface I_AGE_Anime_Download_auto {
     meta: I_Meta;
     browser: outOfReturnPromise<typeof puppeteer.launch>;
     page: outOfReturnPromise<I_AGE_Anime_Download_auto['browser']['newPage']>; // 用一个page行了
-    episode: number[];
+    episode_existingMap: Map<number, { href: string }>;
+    episode_existing_final: number;
+    episode_wanted: number[];
 }
 
 class AGE_Anime_Download_auto implements I_AGE_Anime_Download_auto {
-    meta: I_Meta;
-    browser: Awaited<ReturnType<typeof puppeteer.launch>>;
-    page: outOfReturnPromise<I_AGE_Anime_Download_auto['browser']['newPage']>;
-    episode: number[];
+    meta: I_AGE_Anime_Download_auto['meta'];
+    browser: I_AGE_Anime_Download_auto['browser'];
+    page: I_AGE_Anime_Download_auto['page'];
+    episode_existingMap: I_AGE_Anime_Download_auto['episode_existingMap'];
+    episode_existing_final: I_AGE_Anime_Download_auto['episode_existing_final'];
+    episode_wanted: I_AGE_Anime_Download_auto['episode_wanted'];
 
     constructor(meta: I_Meta) {
         this.meta = { ...meta };
         this.browser = {} as I_AGE_Anime_Download_auto['browser'];
         this.page = {} as I_AGE_Anime_Download_auto['page'];
 
-        this.episode = [];
+        this.episode_existingMap = new Map();
+        this.episode_existing_final = 0;
+        this.episode_wanted = [];
     }
 
     async init() {
@@ -54,7 +60,10 @@ class AGE_Anime_Download_auto implements I_AGE_Anime_Download_auto {
     async run() {
         try {
             await this.step1_episode();
-            console.log('看下', this.episode);
+            
+
+
+
 
             // await page.evaluateOnNewDocument(runInChrome); todo
         } catch (err) {
@@ -62,30 +71,68 @@ class AGE_Anime_Download_auto implements I_AGE_Anime_Download_auto {
         }
     }
 
-    async step1_episode() {
-        // 获取总集数
+    async get_episode_existing(detailUrl: I_Meta['detailUrl']) {
         try {
-            const { detailUrl, range } = this.meta,
-                page = this.page;
+            const errMsg = '该页面没有可下载的动画剧集';
+            const page = this.page;
 
             await page.goto(detailUrl);
             const episodeUl = await page.$(episodeEleClassName);
             if (!episodeUl) {
-                throw '该动漫的总集数未知';
+                throw errMsg;
             }
 
             const episodeLis = await episodeUl.$$('li');
             if (!episodeLis.length) {
-                throw '该动漫的总集数未知';
+                throw errMsg;
             }
 
-            const episode = getEpisode(range, episodeLis.length);
-            if (!episode.length) {
+            for (const li of episodeLis) {
+                try {
+                    const a = await li.$('a');
+                    if (a) {
+                        const href = await a.evaluate(el => el.getAttribute('href'));
+                        if (href) {
+                            let index = href.length - 1;
+                            while (index >= 0) {
+                                if (href[index] === '/') {
+                                    break;
+                                }
+                                index--;
+                            }
+                            if (index >= 0) {
+                                const epi = +href.substring(index + 1, href.length);
+                                if (epi) {
+                                    this.episode_existingMap.set(epi, { href });
+                                    this.episode_existing_final = epi;
+                                }
+                            }
+                        }
+                    }
+                } catch (err) { }
+            }
+
+            if (!this.episode_existingMap.size) {
+                this.printError(errMsg);
+                throw errMsg
+            }
+        } catch (err) {
+            throw 'get_episode_existing出错 -> ' + err;
+        }
+    }
+
+    async step1_episode() {
+        // 获取总集数
+        try {
+            const { detailUrl, range } = this.meta;
+            await this.get_episode_existing(detailUrl);
+
+            const episode_wanted = get_episode_wanted(range, this.episode_existing_final);
+            if (!episode_wanted.length) {
                 this.printError('配置的range范围不正确');
                 throw '配置的range范围不正确';
             }
-
-            this.episode = episode;
+            this.episode_wanted = episode_wanted;
         } catch (err) {
             throw 'step1_episode出错 -> ' + err;
         }
