@@ -1,4 +1,4 @@
-import { download_dir, progressInterval, Type_M3U8, Type_MP4 } from './config.js'
+import { download_dir, progressInterval, type T_prepared_videoInfo, video_type_MP4 } from '../config.js';
 import { createWriteStream } from 'fs';
 import { fetch, formatEpi } from './util.js'
 import { Downloader_M3U8_ts, Downloader_MP4 } from './anime_Downloader.js';
@@ -451,19 +451,14 @@ interface T_poolItem_Manager_AGEAnime_MP4 extends T_poolItem_Manager_AGEAnime_ba
 };
 type T_poolItem_Manager_AGEAnime = T_poolItem_Manager_AGEAnime_M3U8 | T_poolItem_Manager_AGEAnime_MP4;
 
-type T_urls_source = {
-    type: typeof Type_MP4 | typeof Type_M3U8;
-    url_source: string;
-};
-
 interface I_Manager_AGEAnime {
-    urls_source: T_urls_source[];
+    urls_source: T_prepared_videoInfo[];
 }
 
 export class Manager_AGEAnime extends ManagerBase<T_poolItem_Manager_AGEAnime> implements I_Manager_AGEAnime {
-    urls_source: T_urls_source[];
+    urls_source: I_Manager_AGEAnime['urls_source'];
 
-    constructor(urls_source: T_urls_source[]) {
+    constructor(urls_source: I_Manager_AGEAnime['urls_source']) {
         super();
 
         if (urls_source.length < 0) {
@@ -499,7 +494,7 @@ export class Manager_AGEAnime extends ManagerBase<T_poolItem_Manager_AGEAnime> i
                 this.pool[taskId].epi = epi;
                 try {
                     // 这里怎么使用ts推断？
-                    if (urls_source[taskId].type === Type_MP4) {
+                    if (urls_source[taskId].video_type === video_type_MP4) {
                         const runner = new Downloader_MP4(urls_source[taskId].url_source, epi);
                         this.pool[taskId].runner = runner;
                     } else {

@@ -1,13 +1,15 @@
 {
   "files": [
     "meta.ts",
+    "config.ts",
     "index.ts",
 
-    // "scripts_download/config.ts",
-    // "scripts_download/util.ts",
-    // "scripts_download/anime_Manager.ts",
-    // "scripts_download/anime_Downloader.ts",
-    
+    "index.process_download.ts",
+    "scripts_download/anime_Manager.ts",
+    "scripts_download/anime_Downloader.ts",
+    "scripts_download/util.ts",
+
+    "index.process_spider.ts",
     "scripts_spider/index.ts",
     "scripts_spider/runInBrowser.ts",
     "scripts_spider/util.ts",

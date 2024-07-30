@@ -1,7 +1,7 @@
 import { createWriteStream } from 'fs';
 import { pipeline } from 'node:stream/promises';
 import progressStream from 'progress-stream';
-import { download_dir, Min_content_length_MP4, Min_content_length_TS, progressInterval } from './config.js';
+import { download_dir, progressInterval, Min_content_length_TS, Min_content_length_MP4 } from '../config.js';
 import { fetch, type T_Response } from './util.js';
 
 type T_result = boolean | ArrayBuffer | null;

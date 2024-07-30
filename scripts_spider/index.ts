@@ -1,7 +1,12 @@
 import { type I_Meta } from '../meta.js';
 import puppeteer from "puppeteer";
+import { type fork } from 'node:child_process';
 import { overrideXHROpen, waitForElementVideo } from './runInBrowser.js';
 import { get_episode_wanted } from './util.js';
+import {
+    type T_message_spider_download, type T_message_spider_end,
+    type_spider_download, type_spider_end,
+} from '../config.js';
 
 type outOfReturnPromise<T extends (...args: any[]) => Promise<any>> = Awaited<ReturnType<T>>;
 
@@ -9,6 +14,7 @@ interface I_AGE_Anime_Download_auto {
     meta: I_Meta;
     browser: outOfReturnPromise<typeof puppeteer.launch>;
     page: outOfReturnPromise<I_AGE_Anime_Download_auto['browser']['newPage']>; // 用一个page行了
+    process_download: ReturnType<typeof fork>;
     episode_existingMap: Map<number, { url_play: string }>;
     episode_existing_final: number;
     episode_wanted: number[];
@@ -18,6 +24,7 @@ export class AGE_Anime_Download_auto implements I_AGE_Anime_Download_auto {
     meta: I_AGE_Anime_Download_auto['meta'];
     browser: I_AGE_Anime_Download_auto['browser'];
     page: I_AGE_Anime_Download_auto['page'];
+    process_download: I_AGE_Anime_Download_auto['process_download'];
     episode_existingMap: I_AGE_Anime_Download_auto['episode_existingMap'];
     episode_existing_final: I_AGE_Anime_Download_auto['episode_existing_final'];
     episode_wanted: I_AGE_Anime_Download_auto['episode_wanted'];
@@ -26,17 +33,20 @@ export class AGE_Anime_Download_auto implements I_AGE_Anime_Download_auto {
         this.meta = { ...meta };
         this.browser = {} as I_AGE_Anime_Download_auto['browser'];
         this.page = {} as I_AGE_Anime_Download_auto['page'];
+        this.process_download = {} as I_AGE_Anime_Download_auto['process_download'];
 
         this.episode_existingMap = new Map();
         this.episode_existing_final = 0;
         this.episode_wanted = [];
     }
 
-    async init() {
+    async init(process_download: I_AGE_Anime_Download_auto['process_download']) {
         try {
-            // this.browser = await puppeteer.launch();
-            this.browser = await puppeteer.launch({ headless: false });
+            this.browser = await puppeteer.launch();
+            // this.browser = await puppeteer.launch({ headless: false });
             this.page = await this.browser.newPage();
+
+            this.process_download = process_download;
         } catch (err) {
             throw 'init出错 -> ' + err;
         }
@@ -46,19 +56,29 @@ export class AGE_Anime_Download_auto implements I_AGE_Anime_Download_auto {
         // run中任务不并行，一个一个来，拿到mp4地址或m3u8地址往另一个下载进程抛，
         // 当然可能出现某个任务卡住导致后面排队的情况，但几乎不可能，看了一下，网站速度很快
         // 这里测试的时候看一下从运行到拿到地址时的平均时间是多少，设置下载进程轮询时间时好有个数 todo
+        const process_download = this.process_download;
         try {
             await this.step1_episode();
 
             for (let epi of this.episode_wanted) {
                 try {
-                    const url_source = await this.step2_epi_url_source(epi);
-                    console.log('todo 准备将url_source发送到下载进程');
-                    console.log(url_source);
+                    const videoInfo = await this.step2_epi_url_source(epi);
+                    const msg_download: T_message_spider_download = {
+                        type: type_spider_download,
+                        epi,
+                        video_type: videoInfo.video_type,
+                        url_source: videoInfo.url_source,
+                    };
+                    process_download.send(msg_download);
                 } catch (err) {
                     this.printError(`第${epi}集下载失败`);
                     this.printError('失败原因: ' + err);
                 }
             }
+            const msg_end: T_message_spider_end = {
+                type: type_spider_end,
+            }
+            process_download.send(msg_end);
 
             await this.step3_Shutdown();
         } catch (err) {
@@ -135,20 +155,15 @@ export class AGE_Anime_Download_auto implements I_AGE_Anime_Download_auto {
     }
 
     async step2_epi_url_source(epi: number) {
-        const errMsg = `动画没有第${epi}集`;
         try {
+            const errMsg = `动画没有第${epi}集`;
             const episodeInfo = this.episode_existingMap.get(epi);
             if (!episodeInfo) {
                 throw errMsg;
             }
 
             const { url_play } = episodeInfo;
-            const url_video = await this.get_url_video(await this.get_url_iframe(url_play) || '');
-            if (!url_video) {
-                throw errMsg;
-            }
-
-            return url_video
+            return await this.get_url_video(await this.get_url_iframe(url_play) || '');
         } catch (err) {
             throw 'step2_epi_url_source出错 -> ' + err;
         }
@@ -178,17 +193,10 @@ export class AGE_Anime_Download_auto implements I_AGE_Anime_Download_auto {
 
     async get_url_video(url_iframe: string) {
         try {
-            const errMsg = '获取url_video失败';
-
             const page = this.page;
             await page.evaluateOnNewDocument(overrideXHROpen);
             await page.goto(url_iframe);
-            const url_video = await page.evaluate(waitForElementVideo);
-            if (!url_video) {
-                throw errMsg;
-            }
-
-            return url_video
+            return await page.evaluate(waitForElementVideo);
         } catch (err) {
             throw 'get_url_video出错' + err;
         }

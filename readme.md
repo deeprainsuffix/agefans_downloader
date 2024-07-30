@@ -9,7 +9,8 @@
 * todo check meta.ts
 * todo 突然看到puppeteer可以运行在chrome插件中(试验阶段)，可以考虑开发插件
 * todo puppeteer内存
-* todo dispose其实不需要，因为导航时会自动释放
+* done dispose其实不需要，因为导航时会自动释放
 * todo 怎么打开两个tab页？
 * todo page.isJavaScriptEnabled
 * todo beforeRun checkMeta()
+* todo 把字段的注释信息加一下

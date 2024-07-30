@@ -1,5 +1,8 @@
+import { type T_prepared_videoInfo } from '../config.js';
+
 /**
  * 这里面的函数是给浏览器用的，里面用到的变量必须局限在函数内部
+ * 所以这里面的常量可能跟外部是重复的
  */
 
 export function overrideXHROpen() {
@@ -57,7 +60,11 @@ export function waitForElementVideo() {
     function getTipEleM3U8Url() {
         return document.getElementById(uniqueStrElementId);
     }
-    return new Promise((re, rj) => {
+
+    const video_type_MP4 = 'MP4',
+        video_type_M3U8 = 'M3U8';
+
+    return new Promise<Omit<T_prepared_videoInfo, 'epi'>>((re, rj) => {
         try {
             const observer = new MutationObserver(function (mutationsList, observer) {
                 for (let mutation of mutationsList) {
@@ -74,18 +81,21 @@ export function waitForElementVideo() {
                                 }
 
                                 video.addEventListener('loadstart', function handleEvent(e) {
-                                    let url_source = '';
+                                    let video_type: T_prepared_videoInfo['video_type'] = video_type_MP4,
+                                        url_source = '';
                                     const src = video.src;
+                                    console.log('到这里了？？');
                                     if (src.startsWith('blob:')) {
                                         const TipEleM3U8Url = getTipEleM3U8Url();
                                         if (TipEleM3U8Url) {
+                                            video_type = video_type_M3U8;
                                             url_source = TipEleM3U8Url.getAttribute(M3U8UrlProp) || '';
                                         }
                                     } else {
                                         url_source = src;
                                     }
 
-                                    re(url_source);
+                                    re({ video_type, url_source });
                                 }, false);
                             }
                         });
