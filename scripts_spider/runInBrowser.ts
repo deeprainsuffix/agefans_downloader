@@ -3,23 +3,19 @@
  */
 
 export function overrideXHROpen() {
-    const M3U8EndStr = 'playurl/m3u8';
+    const M3U8EndStr = /playurl\/\w+\.m3u8/;
     function filterM3U8Url(url: string) {
-        if (url.indexOf(M3U8EndStr)) {
-            return true
-        }
-
-        return false
+        return M3U8EndStr.test(url)
     }
 
-    const uniqueStrElementId_internal = 'veryUnique';
-    const M3U8UrlProp_internal = 'data-M3U8Url';
-    function setTipEleM3U8Url(m3u8Url: string) {
+    const uniqueStrElementId = 'veryUnique',
+        M3U8UrlProp = 'data-M3U8Url';
+    function setTipEleM3U8Url(M3U8Url: string) {
         // 不需要去重
-        const id = uniqueStrElementId_internal;
+        const id = uniqueStrElementId;
         const div = document.createElement('div');
         div.setAttribute('id', id);
-        div.setAttribute(M3U8UrlProp_internal, m3u8Url);
+        div.setAttribute(M3U8UrlProp, M3U8Url);
         document.body.appendChild(div);
     }
 
@@ -46,27 +42,21 @@ export function overrideXHROpen() {
     try {
         exec();
     } catch (err) {
-        throw 'overrideXHROpen出错 -> ' + err;
+        throw 'overrideXHROpen出错 -> ' + err; // 其实这里出错node端收不到，在puppeteer中打印
     }
-}
-
-export function getTipEleM3U8Url() {
-    const uniqueStrElementId = 'veryUnique';
-    const M3U8UrlProp = 'data-M3U8Url';
-    // 不能这么用，报错，应该使用puppeteer来获取 todo
-    const div = document.getElementById(uniqueStrElementId);
-    if (!div) {
-        throw '没有uniqueStrElementId对应元素'
-    }
-
-    return div.getAttribute(M3U8UrlProp)
 }
 
 export function waitForElementVideo() {
     const targetNode_id = 'artplayer';
     const errMsg = '探测video失败',
-        timeout = 30 * 1000,
+        timeout = 10 * 1000,
         errMsgTimeout = '探测video超时';
+
+    const uniqueStrElementId = 'veryUnique',
+        M3U8UrlProp = 'data-M3U8Url';
+    function getTipEleM3U8Url() {
+        return document.getElementById(uniqueStrElementId);
+    }
     return new Promise((re, rj) => {
         try {
             const observer = new MutationObserver(function (mutationsList, observer) {
@@ -83,13 +73,20 @@ export function waitForElementVideo() {
                                     return rj(errMsg);
                                 }
 
-                                const src = video.getAttribute('src');
-                                console.log('src::', src,); // todo mp4视频有，但m3u8没有，需要跟上边配合
-                                if (!src) {
-                                    return rj(errMsg);
-                                }
+                                video.addEventListener('loadstart', function handleEvent(e) {
+                                    let url_source = '';
+                                    const src = video.src;
+                                    if (src.startsWith('blob:')) {
+                                        const TipEleM3U8Url = getTipEleM3U8Url();
+                                        if (TipEleM3U8Url) {
+                                            url_source = TipEleM3U8Url.getAttribute(M3U8UrlProp) || '';
+                                        }
+                                    } else {
+                                        url_source = src;
+                                    }
 
-                                re(src);
+                                    re(url_source);
+                                }, false);
                             }
                         });
                     }

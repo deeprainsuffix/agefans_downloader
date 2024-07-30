@@ -11,3 +11,5 @@
 * todo puppeteer内存
 * todo dispose其实不需要，因为导航时会自动释放
 * todo 怎么打开两个tab页？
+* todo page.isJavaScriptEnabled
+* todo beforeRun checkMeta()
