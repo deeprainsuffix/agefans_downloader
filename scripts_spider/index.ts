@@ -6,41 +6,41 @@ import { get_episode_wanted } from './util.js';
 import {
     type T_message_spider_download, type T_message_spider_end,
     type_spider_download, type_spider_end,
-} from '../config.js';
+} from '../scripts_process/type.message.js';
 
 type outOfReturnPromise<T extends (...args: any[]) => Promise<any>> = Awaited<ReturnType<T>>;
 
-interface I_AGE_Anime_Download_auto {
+interface I_AGE_Anime_spider_auto {
     meta: I_Meta;
     browser: outOfReturnPromise<typeof puppeteer.launch>;
-    page: outOfReturnPromise<I_AGE_Anime_Download_auto['browser']['newPage']>; // 用一个page行了
+    page: outOfReturnPromise<I_AGE_Anime_spider_auto['browser']['newPage']>; // 用一个page行了
     process_download: ReturnType<typeof fork>;
-    episode_existingMap: Map<number, { url_play: string }>;
+    episode_existingMap: Map<number, { url_play: string, epi_display: string }>;
     episode_existing_final: number;
     episode_wanted: number[];
 }
 
-export class AGE_Anime_Download_auto implements I_AGE_Anime_Download_auto {
-    meta: I_AGE_Anime_Download_auto['meta'];
-    browser: I_AGE_Anime_Download_auto['browser'];
-    page: I_AGE_Anime_Download_auto['page'];
-    process_download: I_AGE_Anime_Download_auto['process_download'];
-    episode_existingMap: I_AGE_Anime_Download_auto['episode_existingMap'];
-    episode_existing_final: I_AGE_Anime_Download_auto['episode_existing_final'];
-    episode_wanted: I_AGE_Anime_Download_auto['episode_wanted'];
+export class AGE_Anime_spider_auto implements I_AGE_Anime_spider_auto {
+    meta: I_AGE_Anime_spider_auto['meta'];
+    browser: I_AGE_Anime_spider_auto['browser'];
+    page: I_AGE_Anime_spider_auto['page'];
+    process_download: I_AGE_Anime_spider_auto['process_download'];
+    episode_existingMap: I_AGE_Anime_spider_auto['episode_existingMap'];
+    episode_existing_final: I_AGE_Anime_spider_auto['episode_existing_final'];
+    episode_wanted: I_AGE_Anime_spider_auto['episode_wanted'];
 
     constructor(meta: I_Meta) {
         this.meta = { ...meta };
-        this.browser = {} as I_AGE_Anime_Download_auto['browser'];
-        this.page = {} as I_AGE_Anime_Download_auto['page'];
-        this.process_download = {} as I_AGE_Anime_Download_auto['process_download'];
+        this.browser = {} as I_AGE_Anime_spider_auto['browser'];
+        this.page = {} as I_AGE_Anime_spider_auto['page'];
+        this.process_download = {} as I_AGE_Anime_spider_auto['process_download'];
 
         this.episode_existingMap = new Map();
         this.episode_existing_final = 0;
         this.episode_wanted = [];
     }
 
-    async init(process_download: I_AGE_Anime_Download_auto['process_download']) {
+    async init(process_download: I_AGE_Anime_spider_auto['process_download']) {
         try {
             this.browser = await puppeteer.launch();
             // this.browser = await puppeteer.launch({ headless: false });
@@ -62,10 +62,15 @@ export class AGE_Anime_Download_auto implements I_AGE_Anime_Download_auto {
 
             for (let epi of this.episode_wanted) {
                 try {
-                    const videoInfo = await this.step2_epi_url_source(epi);
+                    const episodeInfo = this.episode_existingMap.get(epi);
+                    if (!episodeInfo) {
+                        throw `动画没有第${epi}集`;
+                    }
+                    const { url_play, epi_display } = episodeInfo;
+                    const videoInfo = await this.step2_epi_url_source(url_play);
                     const msg_download: T_message_spider_download = {
                         type: type_spider_download,
-                        epi,
+                        epi: epi_display, // 传给下载进程的epi改为00x的string类型
                         video_type: videoInfo.video_type,
                         url_source: videoInfo.url_source,
                     };
@@ -134,10 +139,10 @@ export class AGE_Anime_Download_auto implements I_AGE_Anime_Download_auto {
                                 index--;
                             }
                             if (index >= 0) {
-                                const epi = +href.substring(index + 1, href.length);
+                                const epi = href.substring(index + 1, href.length);
                                 if (epi) {
-                                    this.episode_existingMap.set(epi, { url_play: href });
-                                    this.episode_existing_final = epi;
+                                    this.episode_existingMap.set(+epi, { url_play: href, epi_display: epi });
+                                    this.episode_existing_final = +epi;
                                 }
                             }
                         }
@@ -154,15 +159,8 @@ export class AGE_Anime_Download_auto implements I_AGE_Anime_Download_auto {
         }
     }
 
-    async step2_epi_url_source(epi: number) {
+    async step2_epi_url_source(url_play: string) {
         try {
-            const errMsg = `动画没有第${epi}集`;
-            const episodeInfo = this.episode_existingMap.get(epi);
-            if (!episodeInfo) {
-                throw errMsg;
-            }
-
-            const { url_play } = episodeInfo;
             return await this.get_url_video(await this.get_url_iframe(url_play) || '');
         } catch (err) {
             throw 'step2_epi_url_source出错 -> ' + err;

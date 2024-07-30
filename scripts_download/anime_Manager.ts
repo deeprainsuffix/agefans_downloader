@@ -1,6 +1,7 @@
-import { download_dir, progressInterval, type T_prepared_videoInfo, video_type_MP4 } from '../config.js';
+import { download_dir } from '../scripts_main/config.js';
+import { type T_prepared_videoInfo, video_type_MP4 } from '../scripts_process/type.message.js';
 import { createWriteStream } from 'fs';
-import { fetch, formatEpi } from './util.js'
+import { fetch, progressInterval } from './util.js'
 import { Downloader_M3U8_ts, Downloader_MP4 } from './anime_Downloader.js';
 
 interface I_ManagerBase<T_poolItem> {
@@ -74,7 +75,7 @@ abstract class ManagerBase<T_poolItem> implements I_ManagerBase<T_poolItem> {
     }
 
     abstract init_config(): void;
-    abstract init_pool(): Promise<void>;
+    abstract init_pool(...args: any): Promise<void>;
     abstract task_run(taskId: number): () => Promise<any>;
     abstract ifThreshold_task_run(taskId: number): void;
     abstract run(): Promise<void>;
@@ -452,20 +453,15 @@ interface T_poolItem_Manager_AGEAnime_MP4 extends T_poolItem_Manager_AGEAnime_ba
 type T_poolItem_Manager_AGEAnime = T_poolItem_Manager_AGEAnime_M3U8 | T_poolItem_Manager_AGEAnime_MP4;
 
 interface I_Manager_AGEAnime {
-    urls_source: T_prepared_videoInfo[];
+    busy: boolean;
 }
 
 export class Manager_AGEAnime extends ManagerBase<T_poolItem_Manager_AGEAnime> implements I_Manager_AGEAnime {
-    urls_source: I_Manager_AGEAnime['urls_source'];
+    busy: I_Manager_AGEAnime['busy'];
 
-    constructor(urls_source: I_Manager_AGEAnime['urls_source']) {
+    constructor() {
         super();
-
-        if (urls_source.length < 0) {
-            throw '总集数不能小于0';
-        }
-
-        this.urls_source = urls_source;
+        this.busy = false;
     }
 
     init_config(): void {
@@ -477,29 +473,34 @@ export class Manager_AGEAnime extends ManagerBase<T_poolItem_Manager_AGEAnime> i
         this.threshold_retry = 3;
     }
 
-    async init_pool(): Promise<void> {
-        const urls_source = this.urls_source, size = urls_source.length;
-        this.pool = new Array(size).fill(null).map((_, taskId) => ({
-            taskId,
-            epi: '0',
-            success: false,
-            isManager: false,
-            runner: null,
-        })); // 为了保证this.pool[taskId]不为空
-        this.poolSize = size;
+    async init_pool(prepared_videoInfo: T_prepared_videoInfo[]): Promise<void> {
+        this.busy = true;
         try {
+            const size = prepared_videoInfo.length;
+            if (!size) {
+                throw 'prepared_videoInfo不能为空';
+            }
+
+            this.pool = prepared_videoInfo.map((videoInfo, taskId) => ({
+                taskId,
+                epi: videoInfo.epi,
+                success: false,
+                isManager: false,
+                runner: null,
+            })); // 为了保证this.pool[taskId]不为空
+            this.poolSize = size;
+
             for (let taskId = 0; taskId < size; taskId++) {
-                const epi = formatEpi(taskId + 1, size);
+                const epi = this.pool[taskId].epi;
                 this.printInfo(`第${epi}集下载开始 ————————`);
-                this.pool[taskId].epi = epi;
                 try {
                     // 这里怎么使用ts推断？
-                    if (urls_source[taskId].video_type === video_type_MP4) {
-                        const runner = new Downloader_MP4(urls_source[taskId].url_source, epi);
+                    if (prepared_videoInfo[taskId].video_type === video_type_MP4) {
+                        const runner = new Downloader_MP4(prepared_videoInfo[taskId].url_source, epi);
                         this.pool[taskId].runner = runner;
                     } else {
                         this.pool[taskId].isManager = true;
-                        const runner = new Manager_M3U8(urls_source[taskId].url_source, epi);
+                        const runner = new Manager_M3U8(prepared_videoInfo[taskId].url_source, epi);
                         await runner.init_pool();
                         this.pool[taskId].runner = runner;
                     }
@@ -510,6 +511,7 @@ export class Manager_AGEAnime extends ManagerBase<T_poolItem_Manager_AGEAnime> i
                 }
             }
         } catch (err) {
+            this.busy = false;
             throw this.printError('初始化失败 -> ' + err);
         }
     }
@@ -554,6 +556,7 @@ export class Manager_AGEAnime extends ManagerBase<T_poolItem_Manager_AGEAnime> i
 
     async run(): Promise<void> {
         // 最多并行concurrentLen个任务
+        this.busy = true;
         try {
             const sumTask_run = this.poolSize,
                 concurrentLen = this.concurrentLen,
@@ -578,6 +581,9 @@ export class Manager_AGEAnime extends ManagerBase<T_poolItem_Manager_AGEAnime> i
         } catch (err) {
             throw this.printError('run失败 -> ' + err);
         }
+        this.releasePool_concurrent();
+        this.releasePool();
+        this.busy = false;
     }
 
     async step_retry(): Promise<void> {
@@ -679,9 +685,6 @@ export class Manager_AGEAnime extends ManagerBase<T_poolItem_Manager_AGEAnime> i
 
         let msg = `期望下载${count_sum}个，成功${count_success}个, 失败${count_fail}个`;
         this.printInfo(msg);
-
-        this.releasePool_concurrent();
-        this.releasePool();
     }
 
     printError(errMsg: string) {

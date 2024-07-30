@@ -2,11 +2,11 @@
   "name": "age_animation_cache",
   "version": "1.0.0",
   "description": "缓存age动漫线下观看",
-  "main": "index.js",
+  "main": "scripts_main/index.js",
   "type": "module",
   "scripts": {
     "build": "tsc",
-    "start": "node index.js",
+    "start": "node scripts_main/index.js",
     "deletejs": "node todelete.cjs"
   },
   "keywords": [

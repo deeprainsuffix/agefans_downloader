@@ -4,6 +4,7 @@ const path = require('path');
 // 目标文件夹路径
 const targetDirs = [
     'D:/second_study/project/age_animation_cache',
+    'D:/second_study/project/age_animation_cache/scripts_main',
     'D:/second_study/project/age_animation_cache/scripts_download',
     'D:/second_study/project/age_animation_cache/scripts_spider',
 ];

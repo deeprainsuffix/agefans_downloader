@@ -1,4 +1,4 @@
-import { type T_prepared_videoInfo } from '../config.js';
+import { type T_prepared_videoInfo } from '../scripts_process/type.message.js';
 
 /**
  * 这里面的函数是给浏览器用的，里面用到的变量必须局限在函数内部
@@ -84,7 +84,6 @@ export function waitForElementVideo() {
                                     let video_type: T_prepared_videoInfo['video_type'] = video_type_MP4,
                                         url_source = '';
                                     const src = video.src;
-                                    console.log('到这里了？？');
                                     if (src.startsWith('blob:')) {
                                         const TipEleM3U8Url = getTipEleM3U8Url();
                                         if (TipEleM3U8Url) {

@@ -1,18 +1,23 @@
 {
   "files": [
     "meta.ts",
-    "config.ts",
-    "index.ts",
 
-    "index.process_download.ts",
-    "scripts_download/anime_Manager.ts",
-    "scripts_download/anime_Downloader.ts",
-    "scripts_download/util.ts",
+    "scripts_main/index.ts",
+    "scripts_main/config.ts",
 
-    "index.process_spider.ts",
+    "scripts_process/process_spider.ts",
+    "scripts_process/process_download.ts",
+    "scripts_process/type.message.ts",
+
     "scripts_spider/index.ts",
     "scripts_spider/runInBrowser.ts",
     "scripts_spider/util.ts",
+
+    "scripts_download/index.ts",
+    "scripts_download/anime_Manager.ts",
+    "scripts_download/anime_Downloader.ts",
+    "scripts_download/util.ts",
+    "scripts_download/anime_unit_test.ts",
   ],
   "compilerOptions": {
     /* Visit https://aka.ms/tsconfig to read more about this file */
