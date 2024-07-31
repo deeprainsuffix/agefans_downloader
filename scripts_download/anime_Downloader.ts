@@ -141,7 +141,7 @@ export class Downloader_MP4 extends DownloaderBase implements I_Downloader_MP4 {
                     rj('写入文件出错 -> ' + err);
                 });
                 fileWriteStream.on('finish', () => {
-                    this.printInfo(`☆☆☆下载成功(第${this.epi}集)`);
+                    this.printInfo(`\n☆☆☆下载成功(第${this.epi}集)\n`);
                     re(true);
                 });
 

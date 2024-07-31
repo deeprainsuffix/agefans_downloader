@@ -9,7 +9,6 @@ if (process.argv[2] === 'process_download') {
 }
 
 function startWork() {
-    console.log('我是下载进程，开始工作');
     const instance_download = new AGE_Anime_download_auto();
     instance_download.run();
 
@@ -21,12 +20,13 @@ function startWork() {
         }
 
         if (type === type_spider_end) {
-            const record = await instance_download.shutdown(); // 这里要拿到总结信息 todo 
+            const record = await instance_download.shutdown();
             const msg_kill: T_message_process_child = {
                 type: type_process_download_end,
                 record,
             };
-            process.send!(msg_kill) //todo 把!去掉
+
+            process.send!(msg_kill) // send一定存在
             return
         }
     });

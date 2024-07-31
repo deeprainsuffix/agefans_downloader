@@ -72,7 +72,7 @@ export class AGE_Anime_download_auto implements I_AGE_Anime_download_auto {
                 this.videoInfo_batch_release();
                 this.clock_release();
             }
-        }, 3 * 1000); // 这个时间等后边测下传递时间 todo
+        }, 2.5 * 2 * 1000); // 测试平均2s拿到一个videoInfo，这里设置2.5倍
     }
 
     async manager_consum() {

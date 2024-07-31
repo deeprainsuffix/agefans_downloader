@@ -10,6 +10,7 @@ export type T_message_spider_download = {
 };
 
 export type T_prepared_videoInfo = Omit<T_message_spider_download, 'type'>;
+export type T_prepared_videoInfo_without_epi = Omit<T_prepared_videoInfo, 'epi'>;
 
 export const type_spider_end = 'spider_end';
 export type T_message_spider_end = {

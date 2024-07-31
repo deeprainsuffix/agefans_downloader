@@ -5,6 +5,7 @@ const path = require('path');
 const targetDirs = [
     'D:/second_study/project/age_animation_cache',
     'D:/second_study/project/age_animation_cache/scripts_main',
+    'D:/second_study/project/age_animation_cache/scripts_process',
     'D:/second_study/project/age_animation_cache/scripts_download',
     'D:/second_study/project/age_animation_cache/scripts_spider',
 ];

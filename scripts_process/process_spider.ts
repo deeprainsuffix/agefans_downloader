@@ -17,16 +17,15 @@ export async function launch() {
         child.on('message', (message: T_message_process_child) => {
             if (message.type === type_process_download_end) {
                 const { count_download, count_success } = message.record;
-                console.log('下载结束');
-                let summary = `期望下载${count_download}个，成功${count_success}个, 失败${count_download - count_success}个`;
-                console.log(summary);
+                console.log('\n下载结束');
+                console.log(`期望下载${count_download}个，成功${count_success}个, 失败${count_download - count_success}个`);
                 console.log('下载文件夹目录', download_dir);
                 child.kill();
             }
         });
 
         const instance_spider = new AGE_Anime_spider_auto(meta);
-        await instance_spider.init(child);
+        await instance_spider.init(child); // 简单点，直接把child给它就行
         await instance_spider.run();
     } catch (err) {
         console.log('launch出错 -> ', err);

@@ -259,14 +259,14 @@ export class Manager_M3U8 extends ManagerBase<T_poolItem_Manager_M3U8> implement
 
                 poolItem.success = true;
                 this.progress_M3U8.addOne(true);
-
-                if (!this.stopTask_run && this.taskId_run_next < this.poolSize) {
-                    return this.task_run(this.taskId_run_next++)()
-                }
             } catch (err) {
                 this.errorSet.add(taskId);
                 this.progress_M3U8.addOne(false);
                 this.ifThreshold_task_run(taskId);
+            }
+
+            if (!this.stopTask_run && this.taskId_run_next < this.poolSize) {
+                return this.task_run(this.taskId_run_next++)()
             }
         }
     }
@@ -320,7 +320,7 @@ export class Manager_M3U8 extends ManagerBase<T_poolItem_Manager_M3U8> implement
                 return
             }
 
-            this.printInfo(`下载失败，准备重新下载`);
+            this.printInfo(`有部分资源下载失败，准备重新下载...`);
             await this.retry();
 
             if (this.errorSet.size) {
@@ -342,12 +342,12 @@ export class Manager_M3U8 extends ManagerBase<T_poolItem_Manager_M3U8> implement
 
                 poolItem.success = true;
                 this.errorSet.delete(taskId);
-
-                if (!this.stopTask_retry && this.taskIdIndex_retry_next < this.errorSet.size) {
-                    return this.task_retry(this.tempErrorSet2Arr[this.taskIdIndex_retry_next++])()
-                }
             } catch (err) {
                 this.ifThreshold_task_retry(taskId);
+            }
+
+            if (!this.stopTask_retry && this.taskIdIndex_retry_next < this.errorSet.size) {
+                return this.task_retry(this.tempErrorSet2Arr[this.taskIdIndex_retry_next++])()
             }
         }
     }
@@ -486,6 +486,7 @@ export class Manager_AGEAnime extends ManagerBase<T_poolItem_Manager_AGEAnime> i
             if (!size) {
                 throw 'prepared_videoInfo不能为空';
             }
+            this.record_make({ type: 'add', count: size });
 
             this.pool = prepared_videoInfo.map((videoInfo, taskId) => ({
                 taskId,
@@ -498,7 +499,6 @@ export class Manager_AGEAnime extends ManagerBase<T_poolItem_Manager_AGEAnime> i
 
             for (let taskId = 0; taskId < size; taskId++) {
                 const epi = this.pool[taskId].epi;
-                this.printInfo(`第${epi}集下载开始 ————————`);
                 try {
                     // 这里怎么使用ts推断？
                     if (prepared_videoInfo[taskId].video_type === video_type_MP4) {
@@ -525,6 +525,7 @@ export class Manager_AGEAnime extends ManagerBase<T_poolItem_Manager_AGEAnime> i
     task_run(taskId: number) {
         return async (): Promise<any> => {
             const poolItem = this.pool[taskId];
+            this.printInfo(`第${poolItem.epi}集下载开始 ————————`);
             try {
                 if (poolItem.runner) {
                     await poolItem.runner.run();
@@ -534,16 +535,16 @@ export class Manager_AGEAnime extends ManagerBase<T_poolItem_Manager_AGEAnime> i
 
                     poolItem.success = true;
                 }
-
-                if (!this.stopTask_run && this.taskId_run_next < this.poolSize) {
-                    return this.task_run(this.taskId_run_next++)()
-                }
             } catch (err) {
                 this.printError(`下载失败(第${poolItem.epi}集): ` + err);
                 if (!poolItem.isManager) {
                     this.errorSet.add(taskId);
                 }
                 this.ifThreshold_task_run(taskId);
+            }
+
+            if (!this.stopTask_run && this.taskId_run_next < this.poolSize) {
+                return this.task_run(this.taskId_run_next++)()
             }
         }
     }
@@ -588,7 +589,7 @@ export class Manager_AGEAnime extends ManagerBase<T_poolItem_Manager_AGEAnime> i
             throw this.printError('run失败 -> ' + err);
         }
 
-        this.record_make();
+        this.record_make({ type: 'success' });
         this.releasePool_concurrent();
         this.releasePool();
         this.busy = false;
@@ -607,7 +608,7 @@ export class Manager_AGEAnime extends ManagerBase<T_poolItem_Manager_AGEAnime> i
                 throw `仍然有下载失败的mp4，共${this.errorSet.size}个`;
             }
         } catch (err) {
-            throw 'step_retry出错 -> ' + err;
+            // throw 'step_retry出错 -> ' + err; 不让失败以不影响最终统计数量
         }
     }
 
@@ -625,12 +626,12 @@ export class Manager_AGEAnime extends ManagerBase<T_poolItem_Manager_AGEAnime> i
 
                 poolItem.success = true;
                 this.errorSet.delete(taskId);
-
-                if (!this.stopTask_retry && this.taskIdIndex_retry_next < this.errorSet.size) {
-                    return this.task_retry(this.tempErrorSet2Arr[this.taskIdIndex_retry_next++])()
-                }
             } catch (err) {
                 this.ifThreshold_task_retry(taskId);
+            }
+
+            if (!this.stopTask_retry && this.taskIdIndex_retry_next < this.errorSet.size) {
+                return this.task_retry(this.tempErrorSet2Arr[this.taskIdIndex_retry_next++])()
             }
         }
     }
@@ -679,17 +680,22 @@ export class Manager_AGEAnime extends ManagerBase<T_poolItem_Manager_AGEAnime> i
         }
     }
 
-    record_make() {
-        const count_sum = this.poolSize;
-        let count_success = 0;
-        this.pool.forEach(({ success, epi }) => {
-            if (success) {
-                count_success++;
-            }
-        });
+    record_make(action: { type: 'add', count: number } | { type: 'success' }) {
+        switch (action.type) {
+            case 'add':
+                this.record.count_download += action.count;
+                break;
+            case 'success':
+                let count_success = 0;
+                this.pool.forEach(({ success, epi }) => {
+                    if (success) {
+                        count_success++;
+                    }
+                });
 
-        this.record.count_download += count_sum;
-        this.record.count_success += count_success;
+                this.record.count_success += count_success;
+                break;
+        }
     }
 
     printError(errMsg: string) {
@@ -697,6 +703,6 @@ export class Manager_AGEAnime extends ManagerBase<T_poolItem_Manager_AGEAnime> i
     }
 
     printInfo(info: string) {
-        console.log('\n' + info);
+        console.log('\n' + info + '\n');
     }
 }

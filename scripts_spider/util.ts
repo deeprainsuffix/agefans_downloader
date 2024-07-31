@@ -28,3 +28,19 @@ export function get_episode_wanted(metaRange: I_Meta['range'], sum: number) {
 
     return [...set]
 }
+
+export function formatEpi(epi: number, sum: number): string {
+    if (!(epi >= 1 && epi <= sum)) {
+        return String(epi)
+    }
+
+    let result = String(epi);
+    let l = Math.floor(Math.log10(epi)) + 1;
+    const r = Math.floor(Math.log10(sum)) + 1;
+    while (l < r) {
+        result = '0' + result;
+        l++;
+    }
+
+    return result
+}
