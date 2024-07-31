@@ -1,4 +1,4 @@
-import { type T_prepared_videoInfo } from '../scripts_process/type.message.js';
+import { type T_prepared_videoInfo, type T_record } from '../scripts_process/type.message.js';
 import { Manager_AGEAnime } from './anime_Manager.js';
 
 interface I_AGE_Anime_download_auto {
@@ -19,7 +19,7 @@ export class AGE_Anime_download_auto implements I_AGE_Anime_download_auto {
     signal_shutdown: I_AGE_Anime_download_auto['signal_shutdown'];
 
     clock: I_AGE_Anime_download_auto['clock'];
-    private kill: (value: void | PromiseLike<void>) => void;
+    private kill: (value: T_record | PromiseLike<T_record>) => void;
 
     constructor() {
         this.manager = new Manager_AGEAnime();
@@ -82,13 +82,13 @@ export class AGE_Anime_download_auto implements I_AGE_Anime_download_auto {
         } catch (err) { }
 
         if (!this.clock) {
-            this.kill();
+            this.kill(this.manager.record);
         }
     }
 
-    async shutdown() {
+    async shutdown(): Promise<T_record> {
         this.signal_shutdown = true;
-        return new Promise<void>((kill, _) => {
+        return new Promise<T_record>((kill, _) => {
             this.kill = kill;
         })
     }

@@ -18,9 +18,15 @@ export type T_message_spider_end = {
 
 export type T_message_spider = T_message_spider_download | T_message_spider_end;
 
+export type T_record = {
+    count_download: number;
+    count_success: number;
+}
+
 export const type_process_download_end = 'download_end';
 type T_message_process_child_kill = {
     type: typeof type_process_download_end;
+    record: T_record;
 }
 
 export type T_message_process_child = T_message_process_child_kill;

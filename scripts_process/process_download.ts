@@ -21,9 +21,10 @@ function startWork() {
         }
 
         if (type === type_spider_end) {
-            await instance_download.shutdown(); // 这里要拿到总结信息 todo 
+            const record = await instance_download.shutdown(); // 这里要拿到总结信息 todo 
             const msg_kill: T_message_process_child = {
                 type: type_process_download_end,
+                record,
             };
             process.send!(msg_kill) //todo 把!去掉
             return

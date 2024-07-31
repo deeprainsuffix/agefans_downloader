@@ -1,5 +1,5 @@
 import { download_dir } from '../scripts_main/config.js';
-import { type T_prepared_videoInfo, video_type_MP4 } from '../scripts_process/type.message.js';
+import { type T_prepared_videoInfo, video_type_MP4, type T_record } from '../scripts_process/type.message.js';
 import { createWriteStream } from 'fs';
 import { fetch, progressInterval } from './util.js'
 import { Downloader_M3U8_ts, Downloader_MP4 } from './anime_Downloader.js';
@@ -454,14 +454,20 @@ type T_poolItem_Manager_AGEAnime = T_poolItem_Manager_AGEAnime_M3U8 | T_poolItem
 
 interface I_Manager_AGEAnime {
     busy: boolean;
+    record: T_record;
 }
 
 export class Manager_AGEAnime extends ManagerBase<T_poolItem_Manager_AGEAnime> implements I_Manager_AGEAnime {
     busy: I_Manager_AGEAnime['busy'];
+    record: I_Manager_AGEAnime['record'];
 
     constructor() {
         super();
         this.busy = false;
+        this.record = {
+            count_download: 0,
+            count_success: 0,
+        };
     }
 
     init_config(): void {
@@ -581,6 +587,8 @@ export class Manager_AGEAnime extends ManagerBase<T_poolItem_Manager_AGEAnime> i
         } catch (err) {
             throw this.printError('run失败 -> ' + err);
         }
+
+        this.record_make();
         this.releasePool_concurrent();
         this.releasePool();
         this.busy = false;
@@ -671,20 +679,17 @@ export class Manager_AGEAnime extends ManagerBase<T_poolItem_Manager_AGEAnime> i
         }
     }
 
-    summary() {
+    record_make() {
         const count_sum = this.poolSize;
-        let count_success = 0,
-            count_fail = 0;
+        let count_success = 0;
         this.pool.forEach(({ success, epi }) => {
             if (success) {
                 count_success++;
-            } else {
-                count_fail++;
             }
         });
 
-        let msg = `期望下载${count_sum}个，成功${count_success}个, 失败${count_fail}个`;
-        this.printInfo(msg);
+        this.record.count_download += count_sum;
+        this.record.count_success += count_success;
     }
 
     printError(errMsg: string) {
