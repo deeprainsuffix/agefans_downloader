@@ -72,6 +72,7 @@ export function waitForElementVideo() {
                             if (node.id === targetNode_id) {
                                 // @ts-ignore
                                 const ele: HTMLElement = node;
+
                                 observer.disconnect();
                                 const video = ele.querySelector('video');
                                 if (!video) {
@@ -92,7 +93,7 @@ export function waitForElementVideo() {
                                         url_source = src;
                                     }
 
-                                    re({ video_type, url_source });
+                                    re((clearTimeout(timer), { video_type, url_source }));
                                 }, false);
                             }
                         });
@@ -103,12 +104,12 @@ export function waitForElementVideo() {
             const config = { childList: true };
             observer.observe(document.body, config);
 
-            // const timeout = 10 * 1000,
-            //     errMsg_Timeout = '探测video超时';
-            // setTimeout(() => {
-            //     observer.disconnect();
-            //     rj(errMsg_Timeout);
-            // }, timeout);
+            const timeout = 10 * 1000,
+                errMsg_Timeout = '探测video超时';
+            const timer = setTimeout(() => {
+                observer.disconnect();
+                rj(errMsg_Timeout);
+            }, timeout);
         } catch (err) {
             throw 'waitForElementVideo出错 -> ' + err;
         }

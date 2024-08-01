@@ -44,7 +44,6 @@ export class AGE_Anime_spider_auto implements I_AGE_Anime_spider_auto {
     async init(process_download: I_AGE_Anime_spider_auto['process_download']) {
         try {
             this.browser = await puppeteer.launch();
-            // this.browser = await puppeteer.launch({ headless: false });
             this.page = await this.browser.newPage();
 
             this.process_download = process_download;
@@ -93,131 +92,168 @@ export class AGE_Anime_spider_auto implements I_AGE_Anime_spider_auto {
         }
     }
 
-    async step1_episode(): Promise<void> {
-        // 获取总集数和期望下载的集数
+    async promise_timeout<T>(
+        timeout: number,
+        errMsg_Timeout: string,
+        func: (...args: any[]) => Promise<T>,
+        ...args: any[]
+    ): Promise<T> {
         return new Promise(async (re, rj) => {
+            const timer = setTimeout(() => {
+                rj(errMsg_Timeout);
+            }, timeout);
             try {
-                const timeout = 20 * 1000,
-                    errMsg_Timeout = '获取动画总集数超时';
-                const timer = setTimeout(() => {
-                    rj(errMsg_Timeout);
-                }, timeout);
-
-                const { detailUrl, range } = this.meta;
-                await this.get_episode_existing(detailUrl);
-
-                const episode_wanted = get_episode_wanted(range, this.episode_existing_final);
-                if (!episode_wanted.length) {
-                    this.printError('配置的range范围不正确');
-                    throw '配置的range范围不正确';
-                }
-                this.episode_wanted = episode_wanted;
-                re((clearTimeout(timer), void 0));
+                const result = await func.call(this, ...args);
+                re((clearTimeout(timer), result));
             } catch (err) {
-                rj('step1_episode出错 -> ' + err);
+                rj(err);
             }
         })
     }
 
-    async get_episode_existing(detailUrl: I_Meta['detailUrl']) {
+    async step1_episode(): Promise<void> {
+        // 获取总集数和期望下载的集数
         try {
-            const errMsg = '该动画没有可下载的动画剧集';
+            const { detailUrl, range } = this.meta;
+            await this.get_episode_existing(detailUrl);
 
-            const episodeEleClassName = '.video_detail_episode';
-            const page = this.page;
-            await page.goto(detailUrl);
-            const episodeUl = await page.$(episodeEleClassName);
-            if (!episodeUl) {
-                throw errMsg;
+            const episode_wanted = get_episode_wanted(range, this.episode_existing_final);
+            if (!episode_wanted.length) {
+                this.printError('配置的range范围不正确');
+                throw '配置的range范围不正确';
             }
-
-            const episodeLis = await episodeUl.$$('li');
-            if (!episodeLis.length) {
-                throw errMsg;
-            }
-
-            for (const li of episodeLis) {
-                try {
-                    const a = await li.$('a');
-                    if (a) {
-                        const href = await a.evaluate(el => el.getAttribute('href'));
-                        if (href) {
-                            let index = href.length - 1;
-                            while (index >= 0) {
-                                if (href[index] === '/') {
-                                    break;
-                                }
-                                index--;
-                            }
-                            if (index >= 0) {
-                                const epi = +href.substring(index + 1, href.length);
-                                if (epi) {
-                                    this.episode_existingMap.set(epi, { url_play: href });
-                                    this.episode_existing_final = epi;
-                                }
-                            }
-                        }
-                    }
-                } catch (err) { }
-            }
-
-            if (!this.episode_existingMap.size) {
-                this.printError(errMsg);
-                throw errMsg
-            }
+            this.episode_wanted = episode_wanted;
         } catch (err) {
-            throw 'get_episode_existing出错 -> ' + err;
+            throw 'step1_episode出错 -> ' + err;
         }
     }
 
-    async step2_epi_url_source(url_play: string): Promise<T_prepared_videoInfo_without_epi> {
-        return new Promise(async (re, rj) => {
-            const timeout = 15 * 1000,
-                errMsg_Timeout = '获取资源下载地址超时';
-            const timer = setTimeout(() => {
-                rj(errMsg_Timeout);
-            }, timeout);
+    async get_episode_existing(detailUrl: I_Meta['detailUrl']) {
+        const timeout = 15 * 1000,
+            errMsg_Timeout = '获取动画总集数超时';
+        return this.promise_timeout(
+            timeout,
+            errMsg_Timeout,
+            async function (this: AGE_Anime_spider_auto): Promise<void> {
+                return new Promise(async (re, rj) => {
+                    try {
+                        const errMsg = '该动画没有可下载的动画剧集';
 
-            try {
-                const url_video = await this.get_url_video(await this.get_url_iframe(url_play) || '');
-                re((clearTimeout(timer), url_video));
-            } catch (err) {
-                rj('step2_epi_url_source出错 -> ' + err);
-            }
-        });
+                        const episodeEleClassName = '.video_detail_episode';
+                        const page = this.page;
+                        await page.goto(detailUrl, { timeout });
+                        const episodeUl = await page.$(episodeEleClassName);
+                        if (!episodeUl) {
+                            return rj(errMsg);
+                        }
+
+                        const episodeLis = await episodeUl.$$('li');
+                        if (!episodeLis.length) {
+                            return rj(errMsg);
+                        }
+
+                        for (const li of episodeLis) {
+                            try {
+                                const a = await li.$('a');
+                                if (a) {
+                                    const href = await a.evaluate(el => el.getAttribute('href'));
+                                    if (href) {
+                                        let index = href.length - 1;
+                                        while (index >= 0) {
+                                            if (href[index] === '/') {
+                                                break;
+                                            }
+                                            index--;
+                                        }
+                                        if (index >= 0) {
+                                            const epi = +href.substring(index + 1, href.length);
+                                            if (epi) {
+                                                this.episode_existingMap.set(epi, { url_play: href });
+                                                this.episode_existing_final = epi;
+                                            }
+                                        }
+                                    }
+                                }
+                            } catch (err) { }
+                        }
+
+                        if (!this.episode_existingMap.size) {
+                            this.printError(errMsg);
+                            return rj(errMsg);
+                        }
+
+                        re();
+                    } catch (err) {
+                        rj('get_episode_existing出错 -> ' + err);
+                    }
+                })
+            },
+            detailUrl,
+        )
+    }
+
+    async step2_epi_url_source(url_play: string) {
+        try {
+            return await this.get_url_video(await this.get_url_iframe(url_play) || '');
+        } catch (err) {
+            throw '获取资源下载地址出错: ' + err;
+            // throw 'step2_epi_url_source出错 -> ' + err;
+        }
     }
 
     async get_url_iframe(url_play: string) {
-        try {
-            const errMsg = '获取url_iframe失败';
+        const timeout = 10 * 1000,
+            errMsg_Timeout = '获取url_iframe超时';
+        return this.promise_timeout(
+            timeout,
+            errMsg_Timeout,
+            async function (this: AGE_Anime_spider_auto): Promise<string> {
+                return new Promise(async (re, rj) => {
+                    try {
+                        const errMsg = '获取url_iframe失败';
 
-            const page = this.page;
-            await page.goto(url_play);
-            const iframe = await page.$('iframe');
-            if (!iframe) {
-                throw errMsg;
-            }
+                        const page = this.page;
+                        await page.goto(url_play, { timeout });
+                        const iframe = await page.$('iframe');
+                        if (!iframe) {
+                            return rj(errMsg);
+                        }
 
-            const url_iframe = await iframe.evaluate(el => el.getAttribute('src'));
-            if (!url_iframe) {
-                throw errMsg;
-            }
+                        const url_iframe = await iframe.evaluate(el => el.getAttribute('src'));
+                        if (!url_iframe) {
+                            return rj(errMsg);
+                        }
 
-            return url_iframe
-        } catch (err) {
-            throw 'get_iframeUrl出错 -> ' + err;
-        }
+                        re(url_iframe)
+                    } catch (err) {
+                        rj('get_iframeUrl出错 -> ' + err);
+                    }
+                })
+            },
+            url_play
+        )
     }
 
     async get_url_video(url_iframe: string) {
-        try {
-            const page = this.page;
-            await page.evaluateOnNewDocument(overrideXHROpen);
-            await page.goto(url_iframe);
-            return await page.evaluate(waitForElementVideo);
-        } catch (err) {
-            throw 'get_url_video出错 -> ' + err;
-        }
+        const timeout = 10 * 1000,
+            errMsg_Timeout = '获取url_video超时';
+        return this.promise_timeout(
+            timeout,
+            errMsg_Timeout,
+            async function (this: AGE_Anime_spider_auto): Promise<T_prepared_videoInfo_without_epi> {
+                return new Promise(async (re, rj) => {
+                    try {
+                        const page = this.page;
+                        await page.evaluateOnNewDocument(overrideXHROpen);
+                        await page.goto(url_iframe, { timeout });
+                        re(await page.evaluate(waitForElementVideo));
+                    } catch (err) {
+                        rj('get_url_video出错 -> ' + err);
+                    }
+                })
+            },
+            url_iframe
+        )
     }
 
     async step3_Shutdown() {
