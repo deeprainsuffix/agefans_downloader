@@ -11,7 +11,7 @@ function redir_download_dir() {
 
 function launch_before() {
     redir_download_dir();
-    console.log('注意: 请确保在wifi网络下');
+    console.log('注意: 请确保在wifi网络下，存储空间容量足够\n');
 }
 
 launch_before();

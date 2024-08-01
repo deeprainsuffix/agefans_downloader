@@ -89,6 +89,7 @@ abstract class ManagerBase<T_poolItem> implements I_ManagerBase<T_poolItem> {
 
     releasePool() {
         this.pool.length = 0;
+        this.poolSize = 0;
     }
 
     releasePool_concurrent() {
@@ -229,23 +230,34 @@ export class Manager_M3U8 extends ManagerBase<T_poolItem_Manager_M3U8> implement
     }
 
     async resolve_url_m3u8() {
-        try {
-            const url_m3u8 = this.url_m3u8;
-            const { response, errMsg } = await fetch(url_m3u8);
-            if (!response) {
-                throw errMsg;
-            }
+        return new Promise<string[]>(async (re, rj) => {
+            const timeout = 10 * 1000,
+                errMsg_Timeout = 'response.text()超时';
+            const timer = setTimeout(() => {
+                rj(errMsg_Timeout);
+            }, timeout);
 
-            const fakeText = await response.text();
-            const urls_ts = fakeText.split('\n').filter(s => s.startsWith('https'));
-            if (!urls_ts.length) {
-                throw 'ts视频数量为0';
-            }
+            try {
+                const url_m3u8 = this.url_m3u8;
+                const { response, errMsg } = await fetch(url_m3u8, {
+                    timeout: 3 * 1000,
+                    errMsg_Timeout: '获取ts视频列表超时',
+                });
+                if (!response) {
+                    return rj(errMsg);
+                }
 
-            return urls_ts
-        } catch (err) {
-            throw '解析url_m3u8失败 -> ' + err;
-        }
+                const fakeText = await response.text();
+                const urls_ts = fakeText.split('\n').filter(s => s.startsWith('https'));
+                if (!urls_ts.length) {
+                    return rj('ts视频数量为0');
+                }
+
+                re((clearTimeout(timer), urls_ts));
+            } catch (err) {
+                rj('解析url_m3u8失败 -> ' + err);
+            }
+        })
     }
 
     task_run(taskId: number) {
@@ -320,7 +332,7 @@ export class Manager_M3U8 extends ManagerBase<T_poolItem_Manager_M3U8> implement
                 return
             }
 
-            this.printInfo(`有部分资源下载失败，准备重新下载...`);
+            this.printInfo(`有部分ts片段下载失败，准备重新下载...`);
             await this.retry();
 
             if (this.errorSet.size) {
@@ -467,6 +479,7 @@ export class Manager_AGEAnime extends ManagerBase<T_poolItem_Manager_AGEAnime> i
         this.record = {
             count_download: 0,
             count_success: 0,
+            epi_success: [],
         };
     }
 
@@ -522,6 +535,21 @@ export class Manager_AGEAnime extends ManagerBase<T_poolItem_Manager_AGEAnime> i
         }
     }
 
+    before_run() {
+        this.taskId_run_next = 0;
+        this.failCount_run = 0;
+        this.lastFailedTaskId_run = 0;
+        this.stopTask_run = false;
+
+        this.errorSet.clear();
+        this.tempErrorSet2Arr = [...this.errorSet];
+        this.taskIdIndex_retry_next = 0;
+        this.failCount_retry = 0;
+        this.lastFailedTaskId_retry = 0;
+        this.stopTask_retry = false;
+        this.result = false;
+    }
+
     task_run(taskId: number) {
         return async (): Promise<any> => {
             const poolItem = this.pool[taskId];
@@ -564,6 +592,7 @@ export class Manager_AGEAnime extends ManagerBase<T_poolItem_Manager_AGEAnime> i
     async run(): Promise<void> {
         // 最多并行concurrentLen个任务
         this.busy = true;
+        this.before_run();
         try {
             const sumTask_run = this.poolSize,
                 concurrentLen = this.concurrentLen,
@@ -578,7 +607,6 @@ export class Manager_AGEAnime extends ManagerBase<T_poolItem_Manager_AGEAnime> i
                 for (let i = 0; i < currConcurrentLen; i++) {
                     pool_concurrent[i] = this.task_run(this.taskId_run_next++);
                 }
-
 
                 await Promise.allSettled(pool_concurrent.map(task => task && task()));
                 this.releasePool_concurrent();
@@ -686,14 +714,12 @@ export class Manager_AGEAnime extends ManagerBase<T_poolItem_Manager_AGEAnime> i
                 this.record.count_download += action.count;
                 break;
             case 'success':
-                let count_success = 0;
                 this.pool.forEach(({ success, epi }) => {
                     if (success) {
-                        count_success++;
+                        this.record.count_success++;
+                        this.record.epi_success.push(epi);
                     }
                 });
-
-                this.record.count_success += count_success;
                 break;
         }
     }

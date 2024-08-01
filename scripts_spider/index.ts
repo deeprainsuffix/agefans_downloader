@@ -19,6 +19,7 @@ interface I_AGE_Anime_spider_auto {
     episode_existingMap: Map<number, { url_play: string }>;
     episode_existing_final: number;
     episode_wanted: number[];
+    time_runStart: number;
 }
 
 export class AGE_Anime_spider_auto implements I_AGE_Anime_spider_auto {
@@ -29,6 +30,7 @@ export class AGE_Anime_spider_auto implements I_AGE_Anime_spider_auto {
     episode_existingMap: I_AGE_Anime_spider_auto['episode_existingMap'];
     episode_existing_final: I_AGE_Anime_spider_auto['episode_existing_final'];
     episode_wanted: I_AGE_Anime_spider_auto['episode_wanted'];
+    time_runStart: I_AGE_Anime_spider_auto['time_runStart'];
 
     constructor(meta: I_Meta) {
         this.meta = { ...meta };
@@ -39,6 +41,8 @@ export class AGE_Anime_spider_auto implements I_AGE_Anime_spider_auto {
         this.episode_existingMap = new Map();
         this.episode_existing_final = 0;
         this.episode_wanted = [];
+
+        this.time_runStart = 0;
     }
 
     async init(process_download: I_AGE_Anime_spider_auto['process_download']) {
@@ -55,6 +59,7 @@ export class AGE_Anime_spider_auto implements I_AGE_Anime_spider_auto {
     async run() {
         // run中任务不并行，一个一个来，拿到mp4地址或m3u8地址往另一个下载进程抛，
         // 当然可能出现某个任务卡住导致后面排队的情况，但几乎不可能，看了一下，网站速度很快
+        this.time_runStart = Date.now();
         const process_download = this.process_download;
         try {
             this.printInfo('信息配置中...');
@@ -70,6 +75,7 @@ export class AGE_Anime_spider_auto implements I_AGE_Anime_spider_auto {
                     }
                     const { url_play } = episodeInfo;
                     const videoInfo = await this.step2_epi_url_source(url_play);
+                    console.log(`\n第${epi}集准备就绪`);
                     const msg_download: T_message_spider_download = {
                         type: type_spider_download,
                         epi: formatEpi(epi, this.episode_existing_final), // 传给下载进程的epi改为00x的string类型

@@ -9,25 +9,32 @@ if (process.argv[2] === 'process_download') {
 }
 
 function startWork() {
-    const instance_download = new AGE_Anime_download_auto();
-    instance_download.run();
+    try {
+        const instance_download = new AGE_Anime_download_auto();
+        instance_download.run();
+        process.on('message', async (message: T_message_spider) => {
+            try {
+                const { type } = message;
+                if (type === type_spider_download) {
+                    instance_download.revieve(message);
+                    return
+                }
 
-    process.on('message', async (message: T_message_spider) => {
-        const { type } = message;
-        if (type === type_spider_download) {
-            instance_download.revieve(message);
-            return
-        }
+                if (type === type_spider_end) {
+                    const record = await instance_download.shutdown();
+                    const msg_kill: T_message_process_child = {
+                        type: type_process_download_end,
+                        record,
+                    };
 
-        if (type === type_spider_end) {
-            const record = await instance_download.shutdown();
-            const msg_kill: T_message_process_child = {
-                type: type_process_download_end,
-                record,
-            };
-
-            process.send!(msg_kill) // send一定存在
-            return
-        }
-    });
+                    process.send!(msg_kill) // send一定存在
+                    return
+                }
+            } catch (err) {
+                console.log('process_download onmessage出错 -> ', err);
+            }
+        });
+    } catch (err) {
+        console.log('startWork出错 -> ', err);
+    }
 }

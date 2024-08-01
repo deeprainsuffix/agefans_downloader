@@ -29,6 +29,7 @@ export class AGE_Anime_download_auto implements I_AGE_Anime_download_auto {
         this.signal_shutdown = false;
 
         this.clock = null;
+
         this.kill = () => { };
     }
 
@@ -61,23 +62,26 @@ export class AGE_Anime_download_auto implements I_AGE_Anime_download_auto {
             if (count >= this.batchSize) {
                 this.videoInfo_batch_fill();
                 this.manager_consum();
-                this.videoInfo_batch_release();
 
                 return
             }
 
-            if (count > 0 && this.signal_shutdown) {
-                this.videoInfo_batch_fill(count);
-                this.manager_consum();
-                this.videoInfo_batch_release();
+            if (this.signal_shutdown) {
+                if (count > 0) {
+                    this.videoInfo_batch_fill(count);
+                    this.manager_consum();
+                }
+
                 this.clock_release();
             }
         }, 2.5 * 2 * 1000); // 测试平均2s拿到一个videoInfo，这里设置2.5倍
     }
 
     async manager_consum() {
+        const batch = [...this.prepared_videoInfo_batch];
+        this.videoInfo_batch_release();
         try {
-            await this.manager.init_pool([...this.prepared_videoInfo_batch]);
+            await this.manager.init_pool(batch);
             await this.manager.run();
         } catch (err) { }
 

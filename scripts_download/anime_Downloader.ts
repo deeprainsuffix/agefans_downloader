@@ -47,26 +47,38 @@ export class Downloader_M3U8_ts extends DownloaderBase {
         this.result = null;
     }
 
-    async run(): Promise<any> {
-        try {
-            const { response, errMsg } = await fetch(this.url_source, {
-                headers: {
-                    'Content-Type': 'application/octet-stream',
+    async run() {
+        return new Promise<void>(async (re, rj) => {
+            const timeout = 10 * 1000,
+                errMsg_Timeout = 'response.arrayBuffer()超时';
+            const timer = setTimeout(() => {
+                rj(errMsg_Timeout);
+            }, timeout);
+
+            try {
+                const { response, errMsg } = await fetch(this.url_source, {
+                    headers: {
+                        'Content-Type': 'application/octet-stream',
+                    },
+                    timeout: 3 * 1000,
+                    errMsg_Timeout: 'ts片段下载超时',
+                });
+                if (!response) {
+                    return rj(errMsg);
                 }
-            });
-            if (!response) {
-                throw errMsg;
-            }
 
-            const arrayBuffer = await response.arrayBuffer();
-            if (arrayBuffer.byteLength <= Min_content_length_TS) {
-                throw 'ts片段内容量过少'
-            }
+                const arrayBuffer = await response.arrayBuffer(); // response.arrayBuffer()可能挂起
+                if (arrayBuffer.byteLength <= Min_content_length_TS) {
+                    return rj('ts片段内容量过少');
+                }
 
-            this.result = this.fixedBuffer(arrayBuffer);
-        } catch (err) {
-            throw err;
-        }
+                this.result = this.fixedBuffer(arrayBuffer);
+
+                re(clearTimeout(timer));
+            } catch (err) {
+                rj(err);
+            }
+        })
     }
 
     fixedBuffer(arrayBuffer: ArrayBuffer): Buffer | null {
