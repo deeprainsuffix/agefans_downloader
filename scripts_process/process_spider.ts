@@ -27,18 +27,10 @@ export async function launch() {
         });
         child.on('message', (message: T_message_process_child) => {
             if (message.type === type_process_download_end) {
-                const { count_download, count_success, epi_success } = message.record;
+                const { epi_success } = message.record;
                 console.log('\n下载结束');
                 console.log('下载文件夹目录', download_dir);
-
-                const epi_success2num: number[] = epi_success.map(e => +e);
-                const epi_fail = instance_spider.episode_wanted.filter(e => !epi_success2num.includes(e));
-                console.log(`期望下载${instance_spider.episode_wanted.length}个，成功${count_success}个, 失败${epi_fail.length}个`);
-                if (epi_fail.length) {
-                    console.log('下载失败的分别是' + epi_fail.join(','));
-                }
-                console.log(`用时${((Date.now() - instance_spider.time_runStart) / 1000 / 60).toFixed(2)}分钟`);
-
+                instance_spider.summary(epi_success);
                 child.kill();
             }
         });

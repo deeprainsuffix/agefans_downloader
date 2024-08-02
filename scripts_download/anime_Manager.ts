@@ -717,7 +717,7 @@ export class Manager_AGEAnime extends ManagerBase<T_poolItem_Manager_AGEAnime> i
                 this.pool.forEach(({ success, epi }) => {
                     if (success) {
                         this.record.count_success++;
-                        this.record.epi_success.push(epi);
+                        this.record.epi_success.push(+epi);
                     }
                 });
                 break;

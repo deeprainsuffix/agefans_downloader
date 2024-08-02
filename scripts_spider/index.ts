@@ -20,6 +20,9 @@ interface I_AGE_Anime_spider_auto {
     episode_existing_final: number;
     episode_wanted: number[];
     time_runStart: number;
+
+    episodeErrorSet: Set<number>;
+    retryRound: number;
 }
 
 export class AGE_Anime_spider_auto implements I_AGE_Anime_spider_auto {
@@ -31,6 +34,8 @@ export class AGE_Anime_spider_auto implements I_AGE_Anime_spider_auto {
     episode_existing_final: I_AGE_Anime_spider_auto['episode_existing_final'];
     episode_wanted: I_AGE_Anime_spider_auto['episode_wanted'];
     time_runStart: I_AGE_Anime_spider_auto['time_runStart'];
+    episodeErrorSet: I_AGE_Anime_spider_auto['episodeErrorSet'];
+    retryRound: I_AGE_Anime_spider_auto['retryRound'];
 
     constructor(meta: I_Meta) {
         this.meta = { ...meta };
@@ -43,6 +48,9 @@ export class AGE_Anime_spider_auto implements I_AGE_Anime_spider_auto {
         this.episode_wanted = [];
 
         this.time_runStart = 0;
+
+        this.episodeErrorSet = new Set();
+        this.retryRound = 1;
     }
 
     async init(process_download: I_AGE_Anime_spider_auto['process_download']) {
@@ -84,8 +92,13 @@ export class AGE_Anime_spider_auto implements I_AGE_Anime_spider_auto {
                     };
                     process_download.send(msg_download);
                 } catch (err) {
-                    this.printError(`第${epi}集下载失败，原因: ` + err);
+                    this.episodeErrorSet.add(epi);
+                    this.printError(`第${epi}集下载地址获取失败，原因: ` + err);
                 }
+            }
+
+            if (this.episodeErrorSet.size) {
+                await this.retry();
             }
 
             const msg_end: T_message_spider_end = {
@@ -263,12 +276,55 @@ export class AGE_Anime_spider_auto implements I_AGE_Anime_spider_auto {
         )
     }
 
+    async retry() {
+        console.log(`部分动画下载地址获取失败，准备重新获取，共${this.episodeErrorSet.size}个`);
+        try {
+            const process_download = this.process_download;
+            while (this.retryRound) {
+                this.retryRound--;
+                for (let epi of this.episodeErrorSet) {
+                    try {
+                        const episodeInfo = this.episode_existingMap.get(epi);
+                        if (!episodeInfo) {
+                            throw `动画没有第${epi}集`;
+                        }
+                        const { url_play } = episodeInfo;
+                        const videoInfo = await this.step2_epi_url_source(url_play);
+                        console.log(`\n第${epi}集准备就绪`);
+                        const msg_download: T_message_spider_download = {
+                            type: type_spider_download,
+                            epi: formatEpi(epi, this.episode_existing_final), // 传给下载进程的epi改为00x的string类型
+                            video_type: videoInfo.video_type,
+                            url_source: videoInfo.url_source,
+                        };
+                        process_download.send(msg_download);
+                        this.episodeErrorSet.delete(epi);
+                    } catch (err) {
+                        this.printError(`第${epi}集下载地址重新获取失败，原因: ` + err);
+                    }
+                }
+            }
+        } catch (err) {
+            console.log('retry出错 -> ', err);
+        }
+    }
+
     async step3_Shutdown() {
         try {
             await this.browser.close();
         } catch (err) {
             throw 'step3_Shutdown出错 -> ' + err;
         }
+    }
+
+    summary(epi_success: number[]) {
+        const episode_wanted = this.episode_wanted;
+        const epi_fail = episode_wanted.filter(epi => !epi_success.includes(epi));
+        console.log(`期望下载${episode_wanted.length}个，成功${epi_success.length}个, 失败${epi_fail.length}个`);
+        if (epi_fail.length) {
+            console.log(`下载失败的是: 第${epi_fail.join('、')}集`);
+        }
+        console.log(`用时${((Date.now() - this.time_runStart) / 1000 / 60).toFixed(2)}分钟`);
     }
 
     printError(errMsg: string) {

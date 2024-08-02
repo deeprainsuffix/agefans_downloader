@@ -1,7 +1,7 @@
 {
-  "name": "age_animation_cache",
+  "name": "agefans_downloader",
   "version": "1.0.0",
-  "description": "缓存age动漫线下观看",
+  "description": "下载age动漫线下观看",
   "main": "scripts_main/index.js",
   "type": "module",
   "scripts": {
@@ -10,10 +10,9 @@
     "deletejs": "node todelete.cjs"
   },
   "keywords": [
-    "puppeteer",
-    "node16"
+    "puppeteer"
   ],
-  "author": "todo",
+  "author": "deeprainsuffix",
   "license": "ISC",
   "devDependencies": {
     "@types/progress-stream": "^2.0.5",
