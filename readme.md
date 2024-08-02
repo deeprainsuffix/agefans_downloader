@@ -11,7 +11,7 @@
 
 1. npm i
 2. 改根目录下meta.ts文件
-3. npm run build(别报错)
+3. npm run build(编译ts文件，别报错)
 4. npm run start(第一步先清空根目录下的download文件夹，下载完成记得将download中的动漫文件移出)
 
 ### 注意
