@@ -5,6 +5,14 @@ import {
 import { AGE_Anime_download_auto } from '../scripts_download/index.js'
 
 if (process.argv[2] === 'process_download') {
+    process.on('uncaughtException', (error) => {
+        console.error('子进程中，未捕获异常：', error);
+    });
+
+    process.on('unhandledRejection', (reason, promise) => {
+        console.error('子进程中，未处理的拒绝：', promise, '原因：', reason);
+    });
+
     startWork();
 }
 

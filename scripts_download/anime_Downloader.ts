@@ -76,7 +76,7 @@ export class Downloader_M3U8_ts extends DownloaderBase {
 
                 re(clearTimeout(timer));
             } catch (err) {
-                rj(err);
+                rj('Downloader_M3U8_ts run出错 -> ' + err);
             }
         })
     }
@@ -127,19 +127,19 @@ export class Downloader_MP4 extends DownloaderBase implements I_Downloader_MP4 {
             await this.genFile(response);
             this.result = true;
         } catch (err) {
-            throw err;
+            throw 'Downloader_MP4出错 -> ' + err;
         }
     }
 
     async genFile(response: T_Response) {
-        return new Promise((re, rj) => {
+        return new Promise<void>(async (re, rj) => {
             try {
                 const total = response.headers.get("content-length");
                 const progress = progressStream({
                     length: total !== null ? +total : undefined,
                     time: progressInterval,
                 });
-                progress.on('err', (err) => {
+                progress.on('error', (err) => {
                     rj('过程提示出错 -> ' + err);
                 });
                 progress.on('progress', (progressData) => {
@@ -154,16 +154,16 @@ export class Downloader_MP4 extends DownloaderBase implements I_Downloader_MP4 {
                 });
                 fileWriteStream.on('finish', () => {
                     this.printInfo(`\n☆☆☆下载成功(第${this.epi}集)\n`);
-                    re(true);
+                    re();
                 });
 
-                pipeline(
+                await pipeline(
                     response.body!,
                     progress,
                     fileWriteStream,
                 );
             } catch (err) {
-                rj(err);
+                rj('genFile出错 -> ' + err);
             }
         })
     }

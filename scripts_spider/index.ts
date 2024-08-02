@@ -87,14 +87,15 @@ export class AGE_Anime_spider_auto implements I_AGE_Anime_spider_auto {
                     this.printError(`第${epi}集下载失败，原因: ` + err);
                 }
             }
+
             const msg_end: T_message_spider_end = {
                 type: type_spider_end,
             }
             process_download.send(msg_end);
-
-            await this.step3_Shutdown();
         } catch (err) {
             throw 'run中出错 -> ' + err;
+        } finally {
+            await this.step3_Shutdown();
         }
     }
 

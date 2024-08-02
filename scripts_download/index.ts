@@ -83,7 +83,9 @@ export class AGE_Anime_download_auto implements I_AGE_Anime_download_auto {
         try {
             await this.manager.init_pool(batch);
             await this.manager.run();
-        } catch (err) { }
+        } catch (err) {
+            console.log('manager_consum出错 -> ', err);
+        }
 
         if (!this.clock) {
             this.kill(this.manager.record);

@@ -531,7 +531,7 @@ export class Manager_AGEAnime extends ManagerBase<T_poolItem_Manager_AGEAnime> i
             }
         } catch (err) {
             this.busy = false;
-            throw this.printError('初始化失败 -> ' + err);
+            throw '初始化失败 -> ' + err;
         }
     }
 
@@ -636,7 +636,7 @@ export class Manager_AGEAnime extends ManagerBase<T_poolItem_Manager_AGEAnime> i
                 throw `仍然有下载失败的mp4，共${this.errorSet.size}个`;
             }
         } catch (err) {
-            // throw 'step_retry出错 -> ' + err; 不让失败以不影响最终统计数量
+            // throw 'step_retry出错 -> ' + err; // 不让失败以不影响最终统计数量
         }
     }
 

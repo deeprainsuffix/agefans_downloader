@@ -4,6 +4,17 @@ import { type T_message_process_child, type_process_download_end } from "./type.
 import { child_modulePath, download_dir } from '../scripts_main/config.js';
 import { AGE_Anime_spider_auto } from '../scripts_spider/index.js';
 
+
+process.on('uncaughtException', (error) => {
+    console.error('主进程中，未捕获异常：', error);
+    // process.exit(1);
+});
+
+process.on('unhandledRejection', (reason, promise) => {
+    console.error('主进程中，未处理的拒绝：', promise, '原因：', reason);
+    // process.exit(1);
+});
+
 export async function launch() {
     const controller = new AbortController();
     const { signal } = controller;
@@ -26,7 +37,7 @@ export async function launch() {
                 if (epi_fail.length) {
                     console.log('下载失败的分别是' + epi_fail.join(','));
                 }
-                console.log(`用时${((Date.now() - instance_spider.time_runStart) / 1000 / 60).toFixed(2)}`);
+                console.log(`用时${((Date.now() - instance_spider.time_runStart) / 1000 / 60).toFixed(2)}分钟`);
 
                 child.kill();
             }
